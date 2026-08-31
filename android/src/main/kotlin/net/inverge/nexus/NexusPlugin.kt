@@ -1,5 +1,6 @@
 package net.inverge.nexus
 
+import android.content.Context
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -21,12 +22,14 @@ class NexusPlugin :
     MethodCallHandler {
     private lateinit var channel: MethodChannel
     private val main = Handler(Looper.getMainLooper())
+    private var appContext: Context? = null
     private var recorder: NexusReplayRecorder? = null
     private var crashReporter: NexusCrashReporter? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(binding.binaryMessenger, "nexus")
         channel.setMethodCallHandler(this)
+        appContext = binding.applicationContext
         crashReporter = NexusCrashReporter(binding.applicationContext)
         recorder = NexusReplayRecorder(binding.applicationContext) { recordingId, events ->
             // Marshal batches back to Dart on the platform thread.
@@ -42,14 +45,7 @@ class NexusPlugin :
     override fun onMethodCall(call: MethodCall, result: Result) {
         when (call.method) {
             "getPlatformVersion" -> result.success("Android ${Build.VERSION.RELEASE}")
-            "deviceInfo" -> result.success(
-                mapOf(
-                    "osType" to "android",
-                    "osVersion" to Build.VERSION.RELEASE,
-                    "deviceModel" to "${Build.MANUFACTURER} ${Build.MODEL}",
-                    "deviceKey" to null,
-                ),
-            )
+            "deviceInfo" -> result.success(deviceInfo())
             "startReplay" -> {
                 recorder?.start(call.argument<String>("recordingId") ?: "")
                 result.success(null)
@@ -67,9 +63,36 @@ class NexusPlugin :
         }
     }
 
+    private fun deviceInfo(): Map<String, Any?> {
+        val info = mutableMapOf<String, Any?>(
+            "osType" to "android",
+            "osVersion" to Build.VERSION.RELEASE,
+            "deviceModel" to "${Build.MANUFACTURER} ${Build.MODEL}",
+        )
+        val ctx = appContext ?: return info
+        try {
+            val pm = ctx.packageManager
+            val pkg = ctx.packageName
+            @Suppress("DEPRECATION")
+            val pInfo = pm.getPackageInfo(pkg, 0)
+            info["installTime"] = pInfo.firstInstallTime // epoch ms
+            info["updateTime"] = pInfo.lastUpdateTime
+            info["installerStore"] = if (Build.VERSION.SDK_INT >= 30) {
+                pm.getInstallSourceInfo(pkg).installingPackageName
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getInstallerPackageName(pkg)
+            }
+        } catch (_: Throwable) {
+            // best-effort — never fail the channel call
+        }
+        return info
+    }
+
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         recorder?.stop()
         recorder = null
+        appContext = null
         channel.setMethodCallHandler(null)
     }
 }

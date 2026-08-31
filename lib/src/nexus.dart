@@ -1,3 +1,6 @@
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../nexus_platform_interface.dart';
 import 'config.dart';
 import 'http_client.dart';
@@ -68,9 +71,8 @@ class Nexus {
 
   Future<void> _boot() async {
     _identity.deviceContext = await NexusPlatform.instance.deviceInfo();
-    if (config.appVersion != null) {
-      _identity.deviceContext['appVersion'] = config.appVersion;
-    }
+    await _loadDeviceKey();
+    await _loadAppInfo();
     _http = NexusHttp(config, _identity);
     _outbox = NexusOutbox(_http, config);
     await _outbox.init();
@@ -88,6 +90,54 @@ class Nexus {
 
     if (config.autoCaptureErrors) errors.install();
     if (config.autoTrackSessions) await sessions.track();
+  }
+
+  /// A stable, per-install device id — generated once and persisted (natively,
+  /// via shared_preferences). Survives restarts; reset on reinstall.
+  Future<void> _loadDeviceKey() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stored = prefs.getString('nexus_device_key');
+      if (stored != null && stored.isNotEmpty) {
+        _identity.deviceKey = stored;
+      } else {
+        await prefs.setString('nexus_device_key', _identity.deviceKey);
+      }
+    } catch (_) {/* fall back to the per-launch key */}
+  }
+
+  /// Auto-detect app metadata (name/package/version/build/installer) and, from
+  /// the native layer, install/update time — then derive `appVersion`.
+  Future<void> _loadAppInfo() async {
+    final app = <String, Object?>{};
+    try {
+      final pkg = await PackageInfo.fromPlatform();
+      app.addAll({
+        'appName': pkg.appName,
+        'packageName': pkg.packageName,
+        'version': pkg.version,
+        'buildNumber': pkg.buildNumber,
+        'installerStore': pkg.installerStore,
+      });
+    } catch (_) {/* unavailable in tests / some platforms */}
+
+    // Native install/update time + installer (Android exact; iOS best-effort).
+    for (final k in ['installTime', 'updateTime', 'installerStore']) {
+      final v = _identity.deviceContext[k];
+      if (v != null) app[k] = v;
+      _identity.deviceContext.remove(k); // keep these under `app`, not top-level
+    }
+    app.removeWhere((_, v) => v == null || (v is String && v.isEmpty));
+
+    final version = app['version'] as String?;
+    final build = app['buildNumber'] as String?;
+    final release = config.appVersion ??
+        (version != null ? (build != null && build.isNotEmpty ? '$version+$build' : version) : null);
+    if (release != null) {
+      _identity.deviceContext['appVersion'] = release;
+      app['release'] = release;
+    }
+    _identity.appInfo = app;
   }
 
   /// Identify the current end-user (shorthand for `sessions.identify`).

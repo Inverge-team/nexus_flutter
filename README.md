@@ -87,6 +87,12 @@ reports **every** uncaught error with a full stacktrace:
   network during a crash — same persist-and-forward model as Crashlytics/Sentry).
 
 Dart stacktraces are parsed into structured frames for the console's stack view.
+Every error also carries an **app** context block — `appName`, `packageName`,
+`version`, `buildNumber`, `installerStore`, `installTime`, `updateTime`,
+`release` — auto-detected (no config), so you see exactly which build crashed.
+
+`appVersion` and a stable per-install `deviceKey` are detected/persisted
+automatically; you don't set them in `NexusConfig`.
 
 ## Offline-first delivery
 

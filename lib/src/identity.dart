@@ -22,6 +22,10 @@ class NexusIdentity {
   /// Best-effort device/platform context filled in from the native layer.
   Map<String, Object?> deviceContext = {};
 
+  /// App metadata (name, package, version, build, installer, install/update
+  /// time). Attached to errors to speed up debugging.
+  Map<String, Object?> appInfo = {};
+
   /// Start a fresh session (e.g. after a long background gap).
   void rotateSession() => sessionKey = _randomId('sess');
 

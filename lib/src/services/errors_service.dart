@@ -50,8 +50,15 @@ class NexusErrors {
       'handled': handled,
       'level': level,
       'stack': frames,
-      'context': {..._cfg.defaultProperties, if (context != null) ...context},
-      'release': _cfg.appVersion,
+      'context': {
+        ..._cfg.defaultProperties,
+        // App metadata attached to every error to make debugging easier:
+        // appName, packageName, version, buildNumber, installerStore,
+        // installTime, updateTime, release.
+        if (_id.appInfo.isNotEmpty) 'app': _id.appInfo,
+        if (context != null) ...context,
+      },
+      'release': _id.appInfo['release'] ?? _cfg.appVersion,
       if (_id.distinctId != null) 'distinctId': _id.distinctId,
       'sessionKey': _id.sessionKey,
       'deviceKey': _id.deviceKey,
