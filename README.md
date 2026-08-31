@@ -94,6 +94,22 @@ Every error also carries an **app** context block — `appName`, `packageName`,
 `appVersion` and a stable per-install `deviceKey` are detected/persisted
 automatically; you don't set them in `NexusConfig`.
 
+## Accurate realtime billing (lifecycle-aware)
+
+Realtime connections are billed by connected time. So the SDK **gracefully
+disconnects realtime when the app is backgrounded** (the server then meters the
+exact connected duration instead of over-counting until a ping timeout while the
+app is suspended) and **reconnects, rejoining rooms, on foreground**. Telemetry
+is also flushed on background. Both behaviours are on by default and configurable:
+
+```dart
+NexusConfig(
+  apiKey: '…',
+  manageRealtimeWithLifecycle: true, // disconnect on bg / reconnect on fg
+  flushOnBackground: true,
+);
+```
+
 ## Offline-first delivery
 
 Telemetry (events, logs, errors, replay) is never lost on a flaky network. Each

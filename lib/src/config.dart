@@ -6,6 +6,8 @@ class NexusConfig {
     this.realtimeUrl,
     this.autoTrackSessions = true,
     this.autoCaptureErrors = true,
+    this.manageRealtimeWithLifecycle = true,
+    this.flushOnBackground = true,
     this.flushInterval = const Duration(seconds: 10),
     this.maxBatch = 50,
     this.logging = false,
@@ -28,6 +30,15 @@ class NexusConfig {
 
   /// Install a Flutter error handler that reports uncaught errors. Default `true`.
   final bool autoCaptureErrors;
+
+  /// Gracefully disconnect realtime when the app is backgrounded and reconnect
+  /// (rejoining rooms) on foreground. This makes billed connection-minutes
+  /// accurate — the app isn't charged while suspended. Default `true`.
+  final bool manageRealtimeWithLifecycle;
+
+  /// Flush queued telemetry when the app is backgrounded (so nothing is lost if
+  /// the OS kills the app). Default `true`.
+  final bool flushOnBackground;
 
   /// How often batched telemetry (events/logs) is flushed. Default 10s.
   final Duration flushInterval;

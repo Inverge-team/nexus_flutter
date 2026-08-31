@@ -5,6 +5,7 @@ import '../nexus_platform_interface.dart';
 import 'config.dart';
 import 'http_client.dart';
 import 'identity.dart';
+import 'lifecycle.dart';
 import 'outbox.dart';
 import 'services/errors_service.dart';
 import 'services/events_service.dart';
@@ -50,6 +51,8 @@ class Nexus {
 
   late final NexusHttp _http;
   late final NexusOutbox _outbox;
+  NexusLifecycle? _lifecycle;
+  bool _realtimeWasConnected = false;
   late final NexusSessions sessions;
   late final NexusEvents events;
   late final NexusErrors errors;
@@ -90,6 +93,30 @@ class Nexus {
 
     if (config.autoCaptureErrors) errors.install();
     if (config.autoTrackSessions) await sessions.track();
+
+    // Foreground/background hooks — keeps connection-minutes accurate.
+    _lifecycle = NexusLifecycle(onBackground: _onBackground, onForeground: _onForeground);
+  }
+
+  Future<void> _onBackground() async {
+    _realtimeWasConnected = realtime.isConnected;
+    // Graceful disconnect → the server meters the exact connected duration
+    // instead of over-counting until a ping timeout while the app is suspended.
+    if (config.manageRealtimeWithLifecycle && realtime.isConnected) {
+      realtime.disconnect();
+    }
+    if (config.flushOnBackground) await flush();
+  }
+
+  Future<void> _onForeground() async {
+    if (config.autoTrackSessions) await sessions.track();
+    // Reconnect only if realtime was in use before backgrounding (rooms rejoin
+    // automatically).
+    if (config.manageRealtimeWithLifecycle && _realtimeWasConnected) {
+      realtime.connect();
+    }
+    // Retry any telemetry that queued while offline/suspended.
+    await _outbox.drain();
   }
 
   /// A stable, per-install device id — generated once and persisted (natively,
@@ -168,6 +195,7 @@ class Nexus {
 
   /// Tear down the instance (timers, socket, http).
   void dispose() {
+    _lifecycle?.dispose();
     events.dispose();
     logs.dispose();
     replay.dispose();
