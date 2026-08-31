@@ -48,6 +48,13 @@ android {
         minSdk = 24
     }
 
+    // Native (NDK) crash capture: builds libnexus_ndk.so.
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+        }
+    }
+
     testOptions {
         unitTests {
             isIncludeAndroidResources = true

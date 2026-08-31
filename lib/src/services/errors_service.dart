@@ -90,6 +90,10 @@ class NexusErrors {
     _drainNativeCrashes();
   }
 
+  // Symbolication-ready metadata the native reporters attach (for dSYM /
+  // ndk-stack resolution on the backend).
+  static const _symbolicationKeys = ['binaryImages', 'maps', 'arch', 'fault', 'platform'];
+
   Future<void> _drainNativeCrashes() async {
     final pending = await NexusPlatform.instance.takePendingCrashes();
     for (final c in pending) {
@@ -102,8 +106,9 @@ class NexusErrors {
         level: 'fatal',
         context: {
           'native': true,
-          if (c['platform'] != null) 'platform': c['platform'],
           if (c['timestamp'] != null) 'crashedAt': c['timestamp'],
+          for (final k in _symbolicationKeys)
+            if (c[k] != null) k: c[k],
         },
       );
     }

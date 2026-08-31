@@ -10,6 +10,7 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 import net.inverge.nexus.core.NexusCrashReporter
+import net.inverge.nexus.core.NexusNdk
 import net.inverge.nexus.core.NexusReplayRecorder
 
 /**
@@ -25,12 +26,14 @@ class NexusPlugin :
     private var appContext: Context? = null
     private var recorder: NexusReplayRecorder? = null
     private var crashReporter: NexusCrashReporter? = null
+    private var ndk: NexusNdk? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(binding.binaryMessenger, "nexus")
         channel.setMethodCallHandler(this)
         appContext = binding.applicationContext
         crashReporter = NexusCrashReporter(binding.applicationContext)
+        ndk = NexusNdk(binding.applicationContext)
         recorder = NexusReplayRecorder(binding.applicationContext) { recordingId, events ->
             // Marshal batches back to Dart on the platform thread.
             main.post {
@@ -55,10 +58,18 @@ class NexusPlugin :
                 result.success(null)
             }
             "configureCrashReporting" -> {
-                if (call.argument<Boolean>("enabled") == true) crashReporter?.install()
+                if (call.argument<Boolean>("enabled") == true) {
+                    crashReporter?.install() // JVM (Java/Kotlin) uncaught exceptions
+                    ndk?.install() // native (NDK) C/C++ signal crashes
+                }
                 result.success(null)
             }
-            "takePendingCrashes" -> result.success(crashReporter?.takePending() ?: emptyList<Any>())
+            "takePendingCrashes" -> {
+                val all = ArrayList<Any>()
+                crashReporter?.takePending()?.let { all.addAll(it) }
+                ndk?.takePending()?.let { all.addAll(it) }
+                result.success(all)
+            }
             else -> result.notImplemented()
         }
     }

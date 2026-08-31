@@ -81,10 +81,17 @@ reports **every** uncaught error with a full stacktrace:
 
 - **Flutter framework errors** (build/layout/paint, gesture callbacks) via `FlutterError.onError`.
 - **Uncaught async / Dart errors** via `PlatformDispatcher.onError`.
-- **Native crashes** (Java/Kotlin, Swift/ObjC, background/native code) — the
-  native SDK installs uncaught-exception + signal handlers, persists the crash
-  to disk, and the SDK forwards it to Nexus on the **next launch** (you can't
-  network during a crash — same persist-and-forward model as Crashlytics/Sentry).
+- **Native crashes** — persisted on-device, forwarded on the next launch:
+  - **Android JVM** (Kotlin/Java) uncaught exceptions, with cause chains.
+  - **Android NDK** (C/C++) fatal signals — a native handler (`libnexus_ndk.so`)
+    unwinds the crashing thread on an alt-stack and captures the backtrace +
+    `/proc/self/maps` for build-id symbolication.
+  - **iOS** uncaught NSExceptions + fatal signals, captured with structured
+    frames (module/address/symbol) **and the loaded binary images (UUID + load
+    address)** so stripped release builds can be symbolicated with the dSYM.
+
+  On-device symbols are captured where available; full symbolication of stripped
+  builds is done server-side from the shipped addresses + images/build-ids.
 
 Dart stacktraces are parsed into structured frames for the console's stack view.
 Every error also carries an **app** context block — `appName`, `packageName`,
