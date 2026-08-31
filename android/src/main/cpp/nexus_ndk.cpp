@@ -11,6 +11,8 @@
 #include <fcntl.h>
 #include <string.h>
 #include <stdint.h>
+#include <link.h>
+#include <elf.h>
 
 #define MAX_FRAMES 64
 #define NEXUS_NSIG 32
@@ -111,8 +113,77 @@ Java_net_inverge_nexus_core_NexusNdk_nativeInstall(JNIEnv* env, jclass, jstring 
   for (int s : g_signals) sigaction(s, &sa, &g_old[s]);
 }
 
-// Copy /proc/self/maps → destination (loaded libs + base addresses + build-ids)
-// for offline symbolication. Called at install time (safe — not in a handler).
+// --- loaded-image dump: name + base + GNU build-id, per ELF (like iOS
+// binaryImages). Lets the backend match the exact .so by build-id instead of
+// leaning on the maps/name path. Runs at install time (not in a handler). ---
+
+struct ImageWriter {
+  int fd;
+};
+
+// Find the NT_GNU_BUILD_ID note in a PT_NOTE segment; write its hex into `out`.
+// Returns the number of hex chars written (0 if none).
+static size_t find_build_id(const ElfW(Nhdr)* nhdr_start, size_t size, char* out, size_t out_cap) {
+  static const char* hex = "0123456789abcdef";
+  const uint8_t* p = reinterpret_cast<const uint8_t*>(nhdr_start);
+  const uint8_t* end = p + size;
+  while (p + sizeof(ElfW(Nhdr)) <= end) {
+    const ElfW(Nhdr)* n = reinterpret_cast<const ElfW(Nhdr)*>(p);
+    const uint8_t* name = p + sizeof(ElfW(Nhdr));
+    const uint8_t* desc = name + ((n->n_namesz + 3) & ~3u);
+    if (n->n_type == NT_GNU_BUILD_ID && n->n_namesz == 4 &&
+        memcmp(name, "GNU", 3) == 0) {
+      size_t w = 0;
+      for (uint32_t i = 0; i < n->n_descsz && w + 2 < out_cap; i++) {
+        out[w++] = hex[desc[i] >> 4];
+        out[w++] = hex[desc[i] & 0xf];
+      }
+      return w;
+    }
+    p = desc + ((n->n_descsz + 3) & ~3u);
+  }
+  return 0;
+}
+
+static int dump_image_cb(struct dl_phdr_info* info, size_t, void* data) {
+  ImageWriter* w = static_cast<ImageWriter*>(data);
+  char build_id[64] = {0};
+  size_t id_len = 0;
+  for (int i = 0; i < info->dlpi_phnum; i++) {
+    const ElfW(Phdr)* ph = &info->dlpi_phdr[i];
+    if (ph->p_type != PT_NOTE) continue;
+    const ElfW(Nhdr)* notes =
+        reinterpret_cast<const ElfW(Nhdr)*>(info->dlpi_addr + ph->p_vaddr);
+    id_len = find_build_id(notes, ph->p_memsz, build_id, sizeof(build_id));
+    if (id_len) break;
+  }
+  if (!id_len) return 0; // skip images with no build-id (e.g. anon)
+  // image=<buildid> <base_hex> <name>
+  write_str(w->fd, "image=");
+  write(w->fd, build_id, id_len);
+  write_str(w->fd, " ");
+  write_hex(w->fd, static_cast<uintptr_t>(info->dlpi_addr));
+  write_str(w->fd, " ");
+  write_str(w->fd, (info->dlpi_name && info->dlpi_name[0]) ? info->dlpi_name : "self");
+  write_str(w->fd, "\n");
+  return 0;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_net_inverge_nexus_core_NexusNdk_nativeDumpImages(JNIEnv* env, jclass, jstring dest) {
+  const char* d = env->GetStringUTFChars(dest, nullptr);
+  int fd = open(d, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  if (fd >= 0) {
+    ImageWriter w = {fd};
+    dl_iterate_phdr(dump_image_cb, &w);
+    close(fd);
+  }
+  env->ReleaseStringUTFChars(dest, d);
+}
+
+// Copy /proc/self/maps → destination (loaded libs + base addresses) for the
+// fallback name/range match path. Called at install time (safe — not in a
+// handler).
 extern "C" JNIEXPORT void JNICALL
 Java_net_inverge_nexus_core_NexusNdk_nativeDumpMaps(JNIEnv* env, jclass, jstring dest) {
   const char* d = env->GetStringUTFChars(dest, nullptr);

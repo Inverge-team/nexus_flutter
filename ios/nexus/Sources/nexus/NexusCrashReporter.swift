@@ -106,7 +106,8 @@ final class NexusCrashReporter {
       guard let namePtr = _dyld_get_image_name(i), let header = _dyld_get_image_header(i) else { continue }
       images.append([
         "name": String(cString: namePtr),
-        "loadAddress": UInt(bitPattern: header),
+        // hex string — 64-bit addresses lose precision as a JSON number
+        "loadAddress": String(format: "0x%lx", UInt(bitPattern: header)),
         "slide": _dyld_get_image_vmaddr_slide(i),
         "uuid": uuid(for: header) ?? "",
       ])

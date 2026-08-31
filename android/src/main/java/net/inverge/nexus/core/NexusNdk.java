@@ -21,6 +21,7 @@ public class NexusNdk {
 
     private static final String CRASH_FILE = "nexus_native_crash.txt";
     private static final String MAPS_FILE = "nexus_native_maps.txt";
+    private static final String IMAGES_FILE = "nexus_native_images.txt";
     private static boolean available;
 
     static {
@@ -47,6 +48,7 @@ public class NexusNdk {
         try {
             nativeInstall(new File(context.getFilesDir(), CRASH_FILE).getAbsolutePath());
             nativeDumpMaps(new File(context.getFilesDir(), MAPS_FILE).getAbsolutePath());
+            nativeDumpImages(new File(context.getFilesDir(), IMAGES_FILE).getAbsolutePath());
         } catch (Throwable ignore) {
         }
     }
@@ -83,7 +85,36 @@ public class NexusNdk {
         crash.put("platform", "android-ndk");
         crash.put("stack", frames);
         crash.put("maps", readMaps());
+        final List<Map<String, Object>> images = readImages();
+        if (!images.isEmpty()) crash.put("binaryImages", images);
         out.add(crash);
+        return out;
+    }
+
+    /** Loaded ELF images with build-id + base — the backend matches these exactly. */
+    private List<Map<String, Object>> readImages() {
+        final List<Map<String, Object>> out = new ArrayList<>();
+        final File file = new File(context.getFilesDir(), IMAGES_FILE);
+        if (!file.exists()) return out;
+        try (BufferedReader r = new BufferedReader(new FileReader(file))) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                if (!line.startsWith("image=")) continue;
+                // image=<buildid> <base_hex> <name>
+                final String[] parts = line.substring(6).trim().split(" ", 3);
+                if (parts.length < 3) continue;
+                final Map<String, Object> img = new HashMap<>();
+                img.put("uuid", parts[0]);         // ELF build-id → matches DebugFile.identifier
+                img.put("loadAddress", parts[1]);  // hex
+                final String path = parts[2];
+                final int slash = path.lastIndexOf('/');
+                img.put("name", slash >= 0 ? path.substring(slash + 1) : path);
+                img.put("path", path);
+                out.add(img);
+            }
+        } catch (Exception ignore) {
+        }
+        file.delete();
         return out;
     }
 
@@ -117,4 +148,6 @@ public class NexusNdk {
     private static native void nativeInstall(String crashFilePath);
 
     private static native void nativeDumpMaps(String destPath);
+
+    private static native void nativeDumpImages(String destPath);
 }
