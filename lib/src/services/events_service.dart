@@ -1,12 +1,12 @@
 import '../config.dart';
-import '../http_client.dart';
 import '../identity.dart';
+import '../outbox.dart';
 import 'batch_queue.dart';
 
-/// Product analytics. Events are buffered and shipped in batches, correlated to
-/// the current session.
+/// Product analytics. Events are buffered, batched, and handed to the durable
+/// outbox — correlated to the current session and retried until delivered.
 class NexusEvents {
-  NexusEvents(this._http, this._id, this._cfg) {
+  NexusEvents(this._outbox, this._id, this._cfg) {
     _queue = BatchQueue<Map<String, Object?>>(
       maxBatch: _cfg.maxBatch,
       interval: _cfg.flushInterval,
@@ -14,7 +14,7 @@ class NexusEvents {
     );
   }
 
-  final NexusHttp _http;
+  final NexusOutbox _outbox;
   final NexusIdentity _id;
   final NexusConfig _cfg;
   late final BatchQueue<Map<String, Object?>> _queue;
@@ -32,7 +32,7 @@ class NexusEvents {
   Future<void> flush() => _queue.flush();
 
   Future<void> _flush(List<Map<String, Object?>> events) async {
-    await _http.post('/partner/events', {
+    _outbox.enqueue('/partner/events', {
       'events': events,
       if (_id.distinctId != null) 'distinctId': _id.distinctId,
       'sessionKey': _id.sessionKey,

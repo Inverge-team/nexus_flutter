@@ -88,6 +88,18 @@ reports **every** uncaught error with a full stacktrace:
 
 Dart stacktraces are parsed into structured frames for the console's stack view.
 
+## Offline-first delivery
+
+Telemetry (events, logs, errors, replay) is never lost on a flaky network. Each
+request is written to a durable **outbox** (persisted with `shared_preferences`),
+delivered when the network is up, and retried with exponential backoff — it
+survives app restarts. Request/response calls (flags, links, `sessions.track`)
+stay direct.
+
+```dart
+Nexus.instance.pendingUploads; // requests still queued (e.g. while offline)
+```
+
 ## Lifecycle
 
 ```dart

@@ -2,6 +2,7 @@ import '../nexus_platform_interface.dart';
 import 'config.dart';
 import 'http_client.dart';
 import 'identity.dart';
+import 'outbox.dart';
 import 'services/errors_service.dart';
 import 'services/events_service.dart';
 import 'services/flags_service.dart';
@@ -45,6 +46,7 @@ class Nexus {
   final NexusIdentity _identity;
 
   late final NexusHttp _http;
+  late final NexusOutbox _outbox;
   late final NexusSessions sessions;
   late final NexusEvents events;
   late final NexusErrors errors;
@@ -70,14 +72,19 @@ class Nexus {
       _identity.deviceContext['appVersion'] = config.appVersion;
     }
     _http = NexusHttp(config, _identity);
+    _outbox = NexusOutbox(_http, config);
+    await _outbox.init();
+
+    // Request/response services use HTTP directly; fire-and-forget telemetry
+    // goes through the durable outbox (persisted + retried).
     sessions = NexusSessions(_http, _identity, config);
-    events = NexusEvents(_http, _identity, config);
-    errors = NexusErrors(_http, _identity, config);
-    logs = NexusLogs(_http, _identity, config);
+    events = NexusEvents(_outbox, _identity, config);
+    errors = NexusErrors(_outbox, _identity, config);
+    logs = NexusLogs(_outbox, _identity, config);
     flags = NexusFlags(_http, _identity, config);
     links = NexusLinks(_http, _identity);
     realtime = NexusRealtime(config, _identity);
-    replay = NexusReplay(_http, _identity, config);
+    replay = NexusReplay(_outbox, _identity, config);
 
     if (config.autoCaptureErrors) errors.install();
     if (config.autoTrackSessions) await sessions.track();
@@ -97,12 +104,17 @@ class Nexus {
   String? get distinctId => _identity.distinctId;
   String get sessionKey => _identity.sessionKey;
 
-  /// Flush all buffered telemetry (call before the app is backgrounded/killed).
+  /// Flush all buffered telemetry into the outbox and try to deliver it now
+  /// (call before the app is backgrounded/killed).
   Future<void> flush() async {
     await events.flush();
     await logs.flush();
     await replay.flush();
+    await _outbox.drain();
   }
+
+  /// Number of telemetry requests awaiting delivery (queued/offline).
+  int get pendingUploads => _outbox.pending;
 
   /// Tear down the instance (timers, socket, http).
   void dispose() {
@@ -110,6 +122,7 @@ class Nexus {
     logs.dispose();
     replay.dispose();
     realtime.disconnect();
+    _outbox.dispose();
     _http.close();
     if (identical(_instance, this)) _instance = null;
   }

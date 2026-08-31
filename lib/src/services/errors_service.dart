@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 import '../config.dart';
-import '../http_client.dart';
 import '../identity.dart';
+import '../outbox.dart';
 import '../../nexus_platform_interface.dart';
 
 /// Error & crash monitoring. Once [install]ed, it reports **every** uncaught
@@ -11,9 +11,9 @@ import '../../nexus_platform_interface.dart';
 /// are persisted by the native SDK and forwarded on the next launch. Manual
 /// [capture] is still available for handled errors.
 class NexusErrors {
-  NexusErrors(this._http, this._id, this._cfg);
+  NexusErrors(this._outbox, this._id, this._cfg);
 
-  final NexusHttp _http;
+  final NexusOutbox _outbox;
   final NexusIdentity _id;
   final NexusConfig _cfg;
 
@@ -44,7 +44,7 @@ class NexusErrors {
     required String level,
     Map<String, Object?>? context,
   }) async {
-    await _http.post('/partner/errors', {
+    _outbox.enqueue('/partner/errors', {
       'type': type,
       'message': message,
       'handled': handled,

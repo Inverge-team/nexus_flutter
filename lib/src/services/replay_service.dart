@@ -1,8 +1,8 @@
 import 'dart:math';
 
 import '../config.dart';
-import '../http_client.dart';
 import '../identity.dart';
+import '../outbox.dart';
 import '../../nexus_platform_interface.dart';
 import 'batch_queue.dart';
 
@@ -11,7 +11,7 @@ import 'batch_queue.dart';
 /// correlated to the session. Falls back to a no-op where native capture isn't
 /// available yet (web/desktop).
 class NexusReplay {
-  NexusReplay(this._http, this._id, this._cfg) {
+  NexusReplay(this._outbox, this._id, this._cfg) {
     _queue = BatchQueue<Object?>(
       maxBatch: 200,
       interval: _cfg.flushInterval,
@@ -25,7 +25,7 @@ class NexusReplay {
     });
   }
 
-  final NexusHttp _http;
+  final NexusOutbox _outbox;
   final NexusIdentity _id;
   final NexusConfig _cfg;
   late final BatchQueue<Object?> _queue;
@@ -56,7 +56,7 @@ class NexusReplay {
   Future<void> _flush(List<Object?> events) async {
     final rec = _recordingId;
     if (rec == null || events.isEmpty) return;
-    await _http.post('/partner/replay', {
+    _outbox.enqueue('/partner/replay', {
       'recordingId': rec,
       'events': events,
       if (_id.distinctId != null) 'distinctId': _id.distinctId,

@@ -17,6 +17,7 @@ dependencies:
   plugin_platform_interface: ^2.0.2
   http: ^1.2.0
   socket_io_client: ^2.0.3+1
+  shared_preferences: ^2.2.0
 
 dev_dependencies:
   flutter_test:
