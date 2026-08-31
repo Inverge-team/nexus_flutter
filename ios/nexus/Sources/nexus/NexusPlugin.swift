@@ -40,6 +40,12 @@ public class NexusPlugin: NSObject, FlutterPlugin {
     case "stopReplay":
       recorder?.stop()
       result(nil)
+    case "configureCrashReporting":
+      let args = call.arguments as? [String: Any]
+      if (args?["enabled"] as? Bool) == true { NexusCrashReporter.shared.install() }
+      result(nil)
+    case "takePendingCrashes":
+      result(NexusCrashReporter.shared.takePending())
     default:
       result(FlutterMethodNotImplemented)
     }

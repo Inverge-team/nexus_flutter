@@ -46,7 +46,8 @@ Future<void> main() async {
 // analytics
 context.nexus.events.track('order_placed', properties: {'total': 129});
 
-// errors (uncaught Flutter errors are captured automatically)
+// errors — nothing to call: with autoCaptureErrors (default), EVERY uncaught
+// error is reported automatically. Manual capture is only for handled errors.
 try { risky(); } catch (e, s) { context.nexus.errors.capture(e, s); }
 
 // logs
@@ -72,6 +73,20 @@ await context.nexus.replay.start();
 
 `context.nexus` reads the `NexusScope` if present, otherwise falls back to the
 global `Nexus.instance` — so it works with or without the scope widget.
+
+## Automatic error & crash capture
+
+With `autoCaptureErrors: true` (the default), you don't call anything — the SDK
+reports **every** uncaught error with a full stacktrace:
+
+- **Flutter framework errors** (build/layout/paint, gesture callbacks) via `FlutterError.onError`.
+- **Uncaught async / Dart errors** via `PlatformDispatcher.onError`.
+- **Native crashes** (Java/Kotlin, Swift/ObjC, background/native code) — the
+  native SDK installs uncaught-exception + signal handlers, persists the crash
+  to disk, and the SDK forwards it to Nexus on the **next launch** (you can't
+  network during a crash — same persist-and-forward model as Crashlytics/Sentry).
+
+Dart stacktraces are parsed into structured frames for the console's stack view.
 
 ## Lifecycle
 

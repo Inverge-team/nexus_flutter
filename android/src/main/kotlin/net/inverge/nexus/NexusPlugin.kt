@@ -8,6 +8,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
+import net.inverge.nexus.core.NexusCrashReporter
 import net.inverge.nexus.core.NexusReplayRecorder
 
 /**
@@ -21,10 +22,12 @@ class NexusPlugin :
     private lateinit var channel: MethodChannel
     private val main = Handler(Looper.getMainLooper())
     private var recorder: NexusReplayRecorder? = null
+    private var crashReporter: NexusCrashReporter? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(binding.binaryMessenger, "nexus")
         channel.setMethodCallHandler(this)
+        crashReporter = NexusCrashReporter(binding.applicationContext)
         recorder = NexusReplayRecorder(binding.applicationContext) { recordingId, events ->
             // Marshal batches back to Dart on the platform thread.
             main.post {
@@ -55,6 +58,11 @@ class NexusPlugin :
                 recorder?.stop()
                 result.success(null)
             }
+            "configureCrashReporting" -> {
+                if (call.argument<Boolean>("enabled") == true) crashReporter?.install()
+                result.success(null)
+            }
+            "takePendingCrashes" -> result.success(crashReporter?.takePending() ?: emptyList<Any>())
             else -> result.notImplemented()
         }
     }

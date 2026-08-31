@@ -33,4 +33,12 @@ abstract class NexusPlatform extends PlatformInterface {
 
   /// Register a sink for batches of replay events pushed up from native.
   void onReplayBatch(void Function(String recordingId, List<Object?> events) sink) {}
+
+  /// Install (or remove) the native uncaught-exception / signal handlers that
+  /// persist crashes for forwarding on the next launch. No-op where unsupported.
+  Future<void> configureCrashReporting(bool enabled) async {}
+
+  /// Return and clear native crashes persisted since the last launch. Each map:
+  /// `{ type, message, stack (frames or string), platform, timestamp }`.
+  Future<List<Map<String, Object?>>> takePendingCrashes() async => const [];
 }

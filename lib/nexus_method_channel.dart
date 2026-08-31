@@ -45,6 +45,26 @@ class MethodChannelNexus extends NexusPlatform {
   @override
   void onReplayBatch(void Function(String, List<Object?>) sink) => _replaySink = sink;
 
+  @override
+  Future<void> configureCrashReporting(bool enabled) async {
+    try {
+      await methodChannel.invokeMethod('configureCrashReporting', {'enabled': enabled});
+    } catch (_) {/* native crash reporting unavailable on this platform */}
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> takePendingCrashes() async {
+    try {
+      final res = await methodChannel.invokeMethod<List<dynamic>>('takePendingCrashes');
+      return (res ?? const [])
+          .whereType<Map>()
+          .map((m) => m.map((k, v) => MapEntry(k.toString(), v as Object?)))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
   Future<dynamic> _handleNative(MethodCall call) async {
     if (call.method == 'onReplayBatch') {
       final args = (call.arguments as Map);
