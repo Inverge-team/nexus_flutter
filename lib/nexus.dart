@@ -13,6 +13,7 @@ library;
 
 export 'src/nexus.dart' show Nexus;
 export 'src/config.dart' show NexusConfig;
+export 'src/logging.dart' show NexusLog, NexusLogLevel, NexusLogSink;
 export 'src/context.dart' show NexusScope, NexusBuildContext;
 
 export 'src/services/sessions_service.dart' show NexusSessions;

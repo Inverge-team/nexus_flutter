@@ -1,3 +1,5 @@
+import 'logging.dart';
+
 /// Configuration for [Nexus.init].
 class NexusConfig {
   const NexusConfig({
@@ -11,6 +13,8 @@ class NexusConfig {
     this.flushInterval = const Duration(seconds: 10),
     this.maxBatch = 50,
     this.logging = false,
+    this.logLevel,
+    this.onLog,
     this.appVersion,
     this.defaultProperties = const {},
   });
@@ -46,14 +50,29 @@ class NexusConfig {
   /// Max items per batch flush. Default 50.
   final int maxBatch;
 
-  /// Verbose lifecycle logging via `debugPrint`. Default `false`.
+  /// Shorthand for verbose logging: `true` maps to [NexusLogLevel.debug].
+  /// Prefer [logLevel] for finer control. Default `false`.
   final bool logging;
+
+  /// Diagnostic log verbosity. When null, falls back to [logging] (`debug` if
+  /// on) and otherwise [NexusLogLevel.warn] — so failed requests and dropped
+  /// telemetry are always visible, while the happy path stays quiet.
+  final NexusLogLevel? logLevel;
+
+  /// Optional sink to receive every log record (in addition to `debugPrint`),
+  /// e.g. to forward SDK diagnostics into your own logging.
+  final NexusLogSink? onLog;
 
   /// App version reported with telemetry (e.g. from package_info). Optional.
   final String? appVersion;
 
   /// Properties merged into every event's/person's context.
   final Map<String, Object?> defaultProperties;
+
+  /// Effective log level: explicit [logLevel], else `debug` when [logging] is
+  /// on, else `warn`.
+  NexusLogLevel get resolvedLogLevel =>
+      logLevel ?? (logging ? NexusLogLevel.debug : NexusLogLevel.warn);
 
   String get httpBase => baseUrl.replaceAll(RegExp(r'/+$'), '');
   String get socketBase => (realtimeUrl ?? baseUrl).replaceAll(RegExp(r'/+$'), '');

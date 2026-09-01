@@ -2,11 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'config.dart';
 import 'http_client.dart';
+import 'logging.dart';
 
 class _OutboxItem {
   _OutboxItem({required this.id, required this.path, required this.body, this.attempts = 0, required this.createdAt});
@@ -33,10 +33,10 @@ class _OutboxItem {
 /// retried with exponential backoff. Delivery stops on the first failure (likely
 /// offline) and resumes later; individual items are dropped after [maxAttempts].
 class NexusOutbox {
-  NexusOutbox(this._http, this._cfg, {this.maxItems = 500, this.maxAttempts = 8, this.retryInterval = const Duration(seconds: 30)});
+  NexusOutbox(this._http, NexusConfig config, {this.maxItems = 500, this.maxAttempts = 8, this.retryInterval = const Duration(seconds: 30)})
+      : assert(config.maxBatch > 0);
 
   final NexusHttp _http;
-  final NexusConfig _cfg;
   final int maxItems;
   final int maxAttempts;
   final Duration retryInterval;
@@ -72,6 +72,7 @@ class NexusOutbox {
     while (_items.length > maxItems) {
       _items.removeAt(0); // drop oldest under sustained offline pressure
     }
+    NexusLog.debug('outbox queued $path ($pending pending)');
     _persist();
     unawaited(drain());
   }
@@ -90,7 +91,7 @@ class NexusOutbox {
           item.attempts++;
           if (item.attempts >= maxAttempts) {
             _items.remove(item); // give up on a poison item
-            _log('dropped ${item.path} after $maxAttempts attempts');
+            NexusLog.warn('outbox dropped ${item.path} after $maxAttempts attempts ($pending pending)');
           } else {
             failed = true;
             break; // likely offline — stop and back off
@@ -120,10 +121,6 @@ class NexusOutbox {
     try {
       _prefs?.setString(_storageKey, jsonEncode(_items.map((e) => e.toJson()).toList()));
     } catch (_) {/* non-fatal */}
-  }
-
-  void _log(String msg) {
-    if (_cfg.logging) debugPrint('[Nexus.outbox] $msg ($pending pending)');
   }
 
   static String _genId() {

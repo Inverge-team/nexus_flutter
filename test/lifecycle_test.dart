@@ -1,7 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:nexus/src/lifecycle.dart';
+import 'package:nexus_flutter/src/lifecycle.dart';
 
 void main() {
   testWidgets('fires background/foreground on edges only', (tester) async {

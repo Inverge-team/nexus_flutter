@@ -62,7 +62,7 @@ class NexusErrors {
       if (_id.distinctId != null) 'distinctId': _id.distinctId,
       'sessionKey': _id.sessionKey,
       'deviceKey': _id.deviceKey,
-      ..._id.deviceContext,
+      ..._id.wireContext,
     });
   }
 

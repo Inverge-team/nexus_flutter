@@ -38,7 +38,7 @@ class NexusEvents {
       'sessionKey': _id.sessionKey,
       'deviceKey': _id.deviceKey,
       'appVersion': _cfg.appVersion,
-      ..._id.deviceContext,
+      ..._id.wireContext,
     });
   }
 

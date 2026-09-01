@@ -1,4 +1,4 @@
-name: nexus
+name: nexus_flutter
 description: "Nexus — one Flutter SDK for all Inverge Nexus services (realtime, sessions, events, errors, logs, feature flags, links, session replay)."
 version: 0.1.0
 homepage: https://nexus.inverge.net
@@ -18,7 +18,7 @@ dependencies:
   http: ^1.2.0
   socket_io_client: ^2.0.3+1
   shared_preferences: ^2.2.0
-  package_info_plus: ^8.0.0
+  package_info_plus: ^10.2.1
 
 dev_dependencies:
   flutter_test:

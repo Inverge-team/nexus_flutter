@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:nexus/nexus.dart';
+import 'package:nexus_flutter/nexus.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

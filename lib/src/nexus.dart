@@ -6,6 +6,7 @@ import 'config.dart';
 import 'http_client.dart';
 import 'identity.dart';
 import 'lifecycle.dart';
+import 'logging.dart';
 import 'outbox.dart';
 import 'services/errors_service.dart';
 import 'services/events_service.dart';
@@ -73,9 +74,19 @@ class Nexus {
   }
 
   Future<void> _boot() async {
+    NexusLog.configure(level: config.resolvedLogLevel, sink: config.onLog);
+    NexusLog.info(
+      'initialising — base=${config.httpBase}, apiKey=${NexusLog.mask(config.apiKey)}',
+    );
+
     _identity.deviceContext = await NexusPlatform.instance.deviceInfo();
     await _loadDeviceKey();
     await _loadAppInfo();
+    NexusLog.debug(
+      'identity ready — deviceKey=${_identity.deviceKey}, '
+      'os=${_identity.deviceContext['osType']} ${_identity.deviceContext['osVersion']}, '
+      'appVersion=${_identity.deviceContext['appVersion']}',
+    );
     _http = NexusHttp(config, _identity);
     _outbox = NexusOutbox(_http, config);
     await _outbox.init();
@@ -91,14 +102,23 @@ class Nexus {
     realtime = NexusRealtime(config, _identity);
     replay = NexusReplay(_outbox, _identity, config);
 
-    if (config.autoCaptureErrors) errors.install();
-    if (config.autoTrackSessions) await sessions.track();
+    if (config.autoCaptureErrors) {
+      errors.install();
+      NexusLog.debug('automatic error capture installed');
+    }
+    if (config.autoTrackSessions) {
+      await sessions.track();
+    } else {
+      NexusLog.debug('autoTrackSessions is off — no session started');
+    }
 
     // Foreground/background hooks — keeps connection-minutes accurate.
     _lifecycle = NexusLifecycle(onBackground: _onBackground, onForeground: _onForeground);
+    NexusLog.info('ready (${config.autoTrackSessions ? 'session tracking on' : 'session tracking off'})');
   }
 
   Future<void> _onBackground() async {
+    NexusLog.debug('app backgrounded — flushing telemetry');
     _realtimeWasConnected = realtime.isConnected;
     // Graceful disconnect → the server meters the exact connected duration
     // instead of over-counting until a ping timeout while the app is suspended.
@@ -109,6 +129,7 @@ class Nexus {
   }
 
   Future<void> _onForeground() async {
+    NexusLog.debug('app foregrounded');
     if (config.autoTrackSessions) await sessions.track();
     // Reconnect only if realtime was in use before backgrounding (rooms rejoin
     // automatically).

@@ -1,8 +1,8 @@
-import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import '../config.dart';
 import '../identity.dart';
+import '../logging.dart';
 
 typedef NexusEventHandler = void Function(dynamic data);
 
@@ -21,6 +21,7 @@ class NexusRealtime {
   /// Open the connection (idempotent). Rooms are re-joined after a reconnect.
   void connect() {
     if (_socket != null) return;
+    NexusLog.debug('realtime connecting → ${_cfg.socketBase}');
     final socket = io.io(
       _cfg.socketBase,
       io.OptionBuilder()
@@ -38,13 +39,13 @@ class NexusRealtime {
           .build(),
     );
     socket.onConnect((_) {
-      _log('connected ${socket.id}');
+      NexusLog.info('realtime connected (${socket.id})');
       for (final r in _rooms) {
         socket.emit('room.join', {'room': r});
       }
     });
-    socket.onDisconnect((_) => _log('disconnected'));
-    socket.onConnectError((e) => _log('connect_error $e'));
+    socket.onDisconnect((_) => NexusLog.info('realtime disconnected'));
+    socket.onConnectError((e) => NexusLog.warn('realtime connect_error: $e'));
     _socket = socket;
     socket.connect();
   }
@@ -79,9 +80,5 @@ class NexusRealtime {
   void disconnect() {
     _socket?.dispose();
     _socket = null;
-  }
-
-  void _log(String msg) {
-    if (_cfg.logging) debugPrint('[Nexus.realtime] $msg');
   }
 }

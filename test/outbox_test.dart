@@ -3,10 +3,10 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:nexus/src/config.dart';
-import 'package:nexus/src/http_client.dart';
-import 'package:nexus/src/identity.dart';
-import 'package:nexus/src/outbox.dart';
+import 'package:nexus_flutter/src/config.dart';
+import 'package:nexus_flutter/src/http_client.dart';
+import 'package:nexus_flutter/src/identity.dart';
+import 'package:nexus_flutter/src/outbox.dart';
 
 void main() {
   const cfg = NexusConfig(apiKey: 'k', baseUrl: 'https://api.test');
