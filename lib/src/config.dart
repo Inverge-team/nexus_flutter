@@ -20,6 +20,7 @@ class NexusConfig {
     this.replayPixelRatio = 1.0,
     this.replayMaskTextFields = true,
     this.replayCaptureConsole = true,
+    this.replayCaptureNetwork = true,
     this.appVersion,
     this.defaultProperties = const {},
   });
@@ -93,6 +94,13 @@ class NexusConfig {
   /// player's Console tab (mirrors rrweb's console plugin). SDK-internal
   /// `[Nexus]` lines are skipped. On by default; set `false` to opt out.
   final bool replayCaptureConsole;
+
+  /// Automatically capture HTTP requests for the player's Network tab via
+  /// `HttpOverrides` — covers **both Dio and `package:http`** (any `dart:io`
+  /// client) with no wiring. Requests to the Nexus API are excluded. On by
+  /// default (no effect on web — use a Dio interceptor there). Set `false` to
+  /// opt out (e.g. if the app installs its own `HttpOverrides`).
+  final bool replayCaptureNetwork;
 
   /// App version reported with telemetry (e.g. from package_info). Optional.
   final String? appVersion;

@@ -9,6 +9,7 @@ import 'package:flutter/widgets.dart';
 
 import '../config.dart';
 import '../logging.dart';
+import 'network_capture.dart';
 import 'replay_mask.dart';
 import 'rrweb.dart';
 
@@ -56,6 +57,7 @@ class NexusReplayController {
     _sentFirst = false;
     _lastHash = null;
     _installConsoleCapture();
+    _installNetworkCapture();
     _timer = Timer.periodic(_cfg.replayInterval, (_) => _tick());
     NexusLog.info('replay recording started (frame every ${_cfg.replayInterval.inMilliseconds}ms)');
     // First frame after the next frame is committed — by then NexusScope (added
@@ -70,6 +72,7 @@ class NexusReplayController {
     _timer = null;
     _flushMoves();
     _restoreConsoleCapture();
+    NexusNetworkCapture.uninstall();
     NexusLog.debug('replay recording stopped');
   }
 
@@ -265,6 +268,29 @@ class NexusReplayController {
       debugPrint = _originalDebugPrint!;
       _originalDebugPrint = null;
     }
+  }
+
+  // ---- network capture (Network tab) ----
+
+  /// Install `HttpOverrides`-based capture so every Dio / `package:http` request
+  /// is observed automatically (no-op on web). Nexus's own API calls are
+  /// excluded so telemetry isn't recorded.
+  void _installNetworkCapture() {
+    if (!_cfg.replayCaptureNetwork) return;
+    final baseHost = Uri.tryParse(_cfg.baseUrl)?.host;
+    NexusNetworkCapture.install(
+      isRecording: () => _recording && !_paused,
+      ignore: (url) => baseHost != null && baseHost.isNotEmpty && url.host == baseHost,
+      record: ({required url, required method, required status, required durationMs, size}) =>
+          _emit(Rrweb.network(
+        url: url,
+        method: method,
+        status: status,
+        duration: durationMs,
+        size: size,
+      )),
+    );
+    NexusLog.debug('replay: automatic network capture installed');
   }
 
   static String _consoleLevel(String m) {

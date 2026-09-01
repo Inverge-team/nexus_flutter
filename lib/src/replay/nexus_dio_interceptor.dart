@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../nexus.dart';
+import 'network_capture.dart';
 
 /// A Dio interceptor that feeds every request into session replay's **Network**
 /// tab — method, URL, status, duration and response size.
@@ -36,6 +37,9 @@ class NexusDioInterceptor extends Interceptor {
 
   void _record(RequestOptions options, int status, Response<dynamic>? response) {
     if (!Nexus.isInitialized) return;
+    // Automatic HttpOverrides capture already observes this request (Dio uses
+    // dart:io) — skip to avoid double-recording.
+    if (NexusNetworkCapture.isActive) return;
     final start = options.extra[_startKey];
     final duration =
         start is int ? DateTime.now().millisecondsSinceEpoch - start : 0;
