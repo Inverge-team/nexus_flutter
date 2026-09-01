@@ -5,7 +5,7 @@
 import FlutterMacOS
 import Foundation
 
-import nexus
+import nexus_flutter
 import package_info_plus
 import shared_preferences_foundation
 

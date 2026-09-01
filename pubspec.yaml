@@ -19,6 +19,8 @@ dependencies:
   socket_io_client: ^2.0.3+1
   shared_preferences: ^2.2.0
   package_info_plus: ^10.2.1
+  # Only used by the optional `package:nexus_flutter/nexus_dio.dart` library.
+  dio: ^5.0.0
 
 dev_dependencies:
   flutter_test:
