@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import '../config.dart';
@@ -41,7 +43,9 @@ class NexusRealtime {
     socket.onConnect((_) {
       NexusLog.info('realtime connected (${socket.id})');
       for (final r in _rooms) {
-        socket.emit('room.join', {'room': r});
+        NexusLog.debug('realtime re-joining "$r" after (re)connect');
+        socket.emitWithAck('room.join', {'room': r},
+            ack: (dynamic res) => NexusLog.debug('realtime join "$r" ← $res'));
       }
     });
     socket.onDisconnect((_) => NexusLog.info('realtime disconnected'));
@@ -50,25 +54,53 @@ class NexusRealtime {
     socket.connect();
   }
 
-  /// Join a room (first/created on the server). Re-joined automatically on reconnect.
-  void join(String room) {
+  /// Join a room (first/created on the server). Re-joined automatically on
+  /// reconnect. Returns the server's acknowledgement (`{ ok, room, related }`).
+  Future<dynamic> join(String room) {
     _rooms.add(room);
-    _socket?.emit('room.join', {'room': room});
+    NexusLog.info('realtime join "$room"');
+    return _ackEmit('room.join', {'room': room}, label: 'join "$room"');
   }
 
-  /// Leave a room.
-  void leave(String room) {
+  /// Leave a room. Returns the server's acknowledgement (`{ ok }`).
+  Future<dynamic> leave(String room) {
     _rooms.remove(room);
-    _socket?.emit('room.leave', {'room': room});
+    NexusLog.info('realtime leave "$room"');
+    return _ackEmit('room.leave', {'room': room}, label: 'leave "$room"');
   }
 
-  /// Emit one or more named events to a room with a payload.
-  void emit(String room, dynamic event, [Object? payload]) {
-    _socket?.emit('room.emit', {
-      'room': room,
-      'events': event is List ? event : [event],
-      'payload': payload,
+  /// Emit one or more named events to a room with a payload. Returns the
+  /// server's acknowledgement (`{ ok, room, recipients, related }` or
+  /// `{ error }`), which is also logged.
+  Future<dynamic> emit(String room, dynamic event, [Object? payload]) {
+    final events = event is List ? event : [event];
+    NexusLog.debug('realtime emit $events → "$room"');
+    return _ackEmit(
+      'room.emit',
+      {'room': room, 'events': events, 'payload': payload},
+      label: 'emit $events → "$room"',
+    );
+  }
+
+  /// Emit with an acknowledgement, logging the response. Resolves null (and
+  /// warns) when not connected.
+  Future<dynamic> _ackEmit(String message, Map<String, Object?> body, {required String label}) {
+    final socket = _socket;
+    if (socket == null) {
+      NexusLog.warn('realtime $label dropped — not connected');
+      return Future.value(null);
+    }
+    final completer = Completer<dynamic>();
+    socket.emitWithAck(message, body, ack: (dynamic res) {
+      final isError = res is Map && res['error'] != null;
+      if (isError) {
+        NexusLog.warn('realtime $label ← $res');
+      } else {
+        NexusLog.debug('realtime $label ← $res');
+      }
+      if (!completer.isCompleted) completer.complete(res);
     });
+    return completer.future;
   }
 
   /// Listen for a server event.
