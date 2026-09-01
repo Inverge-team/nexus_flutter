@@ -18,6 +18,7 @@ class NexusConfig {
     this.replayEnabled = false,
     this.replayInterval = const Duration(milliseconds: 1000),
     this.replayPixelRatio = 1.0,
+    this.replayMaskTextFields = true,
     this.appVersion,
     this.defaultProperties = const {},
   });
@@ -80,6 +81,12 @@ class NexusConfig {
   /// resolution (small, fast); raise toward `MediaQuery.devicePixelRatio` for
   /// crisper frames, lower (e.g. 0.75) to shrink payloads. Default 1.0.
   final double replayPixelRatio;
+
+  /// Automatically redact every text input (anything backed by `EditableText` —
+  /// `TextField`, `TextFormField`, `CupertinoTextField`, `SelectableText`) from
+  /// replay frames, so typed content (passwords, PII) is never captured. On by
+  /// default; use `NexusMask` for finer control. Set `false` to opt out.
+  final bool replayMaskTextFields;
 
   /// App version reported with telemetry (e.g. from package_info). Optional.
   final String? appVersion;

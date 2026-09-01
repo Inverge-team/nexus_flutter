@@ -63,6 +63,47 @@ void main() {
     controller.dispose();
   });
 
+  testWidgets('auto-masks text fields when replayMaskTextFields is on', (tester) async {
+    Future<String> captureImg({required bool mask}) async {
+      final events = <Map<String, Object?>>[];
+      final cfg = NexusConfig(
+        apiKey: 'k',
+        replayEnabled: true,
+        replayPixelRatio: 1.0,
+        replayMaskTextFields: mask,
+      );
+      final controller = NexusReplayController(cfg, events.add);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: RepaintBoundary(
+            key: controller.repaintBoundaryKey,
+            child: Scaffold(
+              body: Center(
+                child: SizedBox(
+                  width: 200,
+                  child: TextField(controller: TextEditingController(text: 'SECRET-1234')),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.runAsync(() => controller.captureFrameForTest());
+      controller.dispose();
+      final full = events.firstWhere((e) => e['type'] == 2);
+      final node = (full['data'] as Map)['node'] as Map;
+      final html = (node['childNodes'] as List)[1] as Map;
+      final body = (html['childNodes'] as List)[1] as Map;
+      final img = (body['childNodes'] as List)[0] as Map;
+      return (img['attributes'] as Map)['src'] as String;
+    }
+
+    final masked = await captureImg(mask: true);
+    final unmasked = await captureImg(mask: false);
+    expect(masked == unmasked, isFalse, reason: 'redacting the text field must change the frame');
+  });
+
   testWidgets('NexusMask registers while mounted and cleans up', (tester) async {
     expect(NexusMaskRegistry.instance.isEmpty, isTrue);
     await tester.pumpWidget(

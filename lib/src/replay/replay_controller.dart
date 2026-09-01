@@ -112,10 +112,12 @@ class NexusReplayController {
     final int w = boundary.size.width.round();
     final int h = boundary.size.height.round();
 
-    // Redact masked regions before the pixels are ever encoded.
-    final masks = NexusMaskRegistry.instance.isEmpty
-        ? const <Rect>[]
-        : NexusMaskRegistry.instance.rectsIn(boundary);
+    // Redact masked regions (explicit NexusMask + auto text fields) before the
+    // pixels are ever encoded.
+    final masks = <Rect>[
+      if (!NexusMaskRegistry.instance.isEmpty) ...NexusMaskRegistry.instance.rectsIn(boundary),
+      if (_cfg.replayMaskTextFields) ..._textFieldRects(boundary),
+    ];
     final ui.Image finalImage = masks.isEmpty ? shot : await _redact(shot, masks, ratio);
 
     final ByteData? png = await finalImage.toByteData(format: ui.ImageByteFormat.png);
@@ -138,6 +140,25 @@ class NexusReplayController {
     } else {
       _emit(Rrweb.frame(dataUri: dataUri));
     }
+  }
+
+  /// Bounds of every text-input render box (`RenderEditable` underlies
+  /// TextField/TextFormField/CupertinoTextField/SelectableText), in the
+  /// boundary's coordinate space — so typed content is auto-redacted.
+  List<Rect> _textFieldRects(RenderObject boundary) {
+    final out = <Rect>[];
+    void visit(RenderObject node) {
+      if (node is RenderEditable && node.attached && node.hasSize) {
+        try {
+          final topLeft = node.localToGlobal(Offset.zero, ancestor: boundary);
+          out.add(topLeft & node.size);
+        } catch (_) {/* off-tree / not laid out */}
+      }
+      node.visitChildren(visit);
+    }
+
+    boundary.visitChildren(visit);
+    return out;
   }
 
   /// Paint solid blocks over mask rects (scaled to image pixels).

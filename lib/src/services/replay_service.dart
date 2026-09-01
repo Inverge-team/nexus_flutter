@@ -14,9 +14,11 @@ import 'batch_queue.dart';
 /// batches from a native recorder if one is present (future native SDKs).
 class NexusReplay {
   NexusReplay(this._outbox, this._id, this._cfg) {
+    // Small batches: each frame is a base64 PNG, so cap how many ship per
+    // request to keep payloads modest. Flush often so frames aren't held long.
     _queue = BatchQueue<Object?>(
-      maxBatch: 200,
-      interval: _cfg.flushInterval,
+      maxBatch: 15,
+      interval: const Duration(seconds: 5),
       onFlush: _flush,
     );
     _controller = NexusReplayController(_cfg, _onEvent);
