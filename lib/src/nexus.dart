@@ -112,6 +112,11 @@ class Nexus {
       NexusLog.debug('autoTrackSessions is off — no session started');
     }
 
+    if (config.replayEnabled) {
+      await replay.start();
+      NexusLog.info('session replay enabled');
+    }
+
     // Foreground/background hooks — keeps connection-minutes accurate.
     _lifecycle = NexusLifecycle(onBackground: _onBackground, onForeground: _onForeground);
     NexusLog.info('ready (${config.autoTrackSessions ? 'session tracking on' : 'session tracking off'})');
@@ -119,6 +124,7 @@ class Nexus {
 
   Future<void> _onBackground() async {
     NexusLog.debug('app backgrounded — flushing telemetry');
+    if (config.replayEnabled) replay.pause(); // can't rasterize a suspended app
     _realtimeWasConnected = realtime.isConnected;
     // Graceful disconnect → the server meters the exact connected duration
     // instead of over-counting until a ping timeout while the app is suspended.
@@ -130,6 +136,7 @@ class Nexus {
 
   Future<void> _onForeground() async {
     NexusLog.debug('app foregrounded');
+    if (config.replayEnabled) replay.resume();
     if (config.autoTrackSessions) await sessions.track();
     // Reconnect only if realtime was in use before backgrounding (rooms rejoin
     // automatically).

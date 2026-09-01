@@ -15,6 +15,9 @@ class NexusConfig {
     this.logging = false,
     this.logLevel,
     this.onLog,
+    this.replayEnabled = false,
+    this.replayInterval = const Duration(milliseconds: 1000),
+    this.replayPixelRatio = 1.0,
     this.appVersion,
     this.defaultProperties = const {},
   });
@@ -62,6 +65,21 @@ class NexusConfig {
   /// Optional sink to receive every log record (in addition to `debugPrint`),
   /// e.g. to forward SDK diagnostics into your own logging.
   final NexusLogSink? onLog;
+
+  /// Record session replay: periodic screenshots of the app + pointer events,
+  /// shipped as rrweb frames. Requires wrapping the app in `NexusScope`. Wrap
+  /// sensitive widgets in `NexusMask` to redact them. Default `false` (billed /
+  /// privacy-sensitive — opt in explicitly).
+  final bool replayEnabled;
+
+  /// How often a replay frame is captured. Lower = smoother but more data/CPU.
+  /// Default 1s. Identical consecutive frames are dropped automatically.
+  final Duration replayInterval;
+
+  /// Capture resolution as a multiple of logical pixels. 1.0 ≈ device-independent
+  /// resolution (small, fast); raise toward `MediaQuery.devicePixelRatio` for
+  /// crisper frames, lower (e.g. 0.75) to shrink payloads. Default 1.0.
+  final double replayPixelRatio;
 
   /// App version reported with telemetry (e.g. from package_info). Optional.
   final String? appVersion;
