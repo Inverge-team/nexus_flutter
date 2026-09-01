@@ -80,13 +80,24 @@ class NexusReplayController {
   /// [NexusNavigatorObserver] or manually via `nexus.trackScreen(name)`.
   void trackScreen(String name) {
     final clean = name.replaceFirst(RegExp(r'^/+'), '');
-    _currentHref = 'app:///$clean';
+    final href = 'app:///$clean';
+    if (href == _currentHref) return; // de-dupe repeated notifications
+    _currentHref = href;
     // Emit now if we know the viewport (a meta must carry it so the player
     // doesn't resize to 0); otherwise the first frame will use this href.
     if (_sentFirst && _lastW != null && _lastH != null) {
       _emit(Rrweb.meta(href: _currentHref, width: _lastW!, height: _lastH!));
       NexusLog.debug('replay: page → $_currentHref');
     }
+  }
+
+  /// Track navigation from any [Listenable] router (e.g. GoRouter's
+  /// `routerDelegate`) plus a getter for the current path. Catches **all**
+  /// navigation — including shell/nested navigators that a NavigatorObserver on
+  /// the root misses — with no router-package dependency.
+  void observeRouter(Listenable router, String Function() currentPath) {
+    router.addListener(() => trackScreen(currentPath()));
+    trackScreen(currentPath()); // seed with the current screen
   }
 
   /// Record a network request — populates the player's Network tab.

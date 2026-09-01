@@ -147,6 +147,45 @@ void main() {
     controller.dispose();
   });
 
+  testWidgets('observeRouter emits page metas on navigation and de-dupes', (tester) async {
+    final events = <Map<String, Object?>>[];
+    const cfg = NexusConfig(
+      apiKey: 'k',
+      replayEnabled: true,
+      replayPixelRatio: 1.0,
+      replayCaptureConsole: false,
+      replayCaptureNetwork: false,
+    );
+    final controller = NexusReplayController(cfg, events.add);
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: RepaintBoundary(
+          key: controller.repaintBoundaryKey,
+          child: Container(width: 60, height: 60, color: const Color(0xFF010203)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.runAsync(() => controller.captureFrameForTest()); // sentFirst + size
+
+    var path = '/home';
+    final router = ValueNotifier<int>(0); // stand-in for a router delegate
+    controller.observeRouter(router, () => path); // seeds '/home'
+
+    path = '/orders/42';
+    router.value = 1; // notify → track '/orders/42'
+    path = '/orders/42';
+    router.value = 2; // same path → de-duped
+
+    final orderMetas = events.where((e) =>
+        e['type'] == 4 && (e['data'] as Map)['href'].toString().contains('orders')).toList();
+    expect(orderMetas.length, 1, reason: 'one meta per distinct route');
+    expect((orderMetas.first['data'] as Map)['href'], 'app:///orders/42');
+
+    controller.dispose();
+  });
+
   testWidgets('tees debugPrint into console events while recording', (tester) async {
     final events = <Map<String, Object?>>[];
     const cfg = NexusConfig(apiKey: 'k', replayEnabled: true, replayCaptureConsole: true);

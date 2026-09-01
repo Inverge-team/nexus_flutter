@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
+
 import '../config.dart';
 import '../identity.dart';
 import '../logging.dart';
@@ -75,6 +77,17 @@ class NexusReplay {
   /// wired automatically via [NexusNavigatorObserver]; call manually for custom
   /// navigation. No-op when replay is disabled.
   void trackScreen(String name) => _controller.trackScreen(name);
+
+  /// Track navigation from a [Listenable] router + a current-path getter — e.g.
+  /// GoRouter (catches shell/nested routes a root observer misses):
+  /// ```dart
+  /// nexus.replay.observeRouter(
+  ///   appRouter.routerDelegate,
+  ///   () => appRouter.routerDelegate.currentConfiguration.uri.path,
+  /// );
+  /// ```
+  void observeRouter(Listenable router, String Function() currentPath) =>
+      _controller.observeRouter(router, currentPath);
 
   /// Record a network request for the player's Network tab — feed this from
   /// your HTTP client's interceptor (e.g. a Dio interceptor). No-op unless

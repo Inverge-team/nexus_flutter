@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -209,6 +210,12 @@ class Nexus {
   /// Record a screen/page change for session replay's Pages tab. Wire
   /// [NexusNavigatorObserver] into `navigatorObservers` to do this automatically.
   void trackScreen(String name) => replay.trackScreen(name);
+
+  /// Track navigation from a [Listenable] router (e.g. GoRouter's
+  /// `routerDelegate`) — catches shell/nested routes a root observer misses.
+  /// See [NexusReplay.observeRouter].
+  void observeRouter(Listenable router, String Function() currentPath) =>
+      replay.observeRouter(router, currentPath);
 
   String? get distinctId => _identity.distinctId;
   String get sessionKey => _identity.sessionKey;
