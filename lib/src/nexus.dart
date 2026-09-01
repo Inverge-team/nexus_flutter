@@ -113,6 +113,13 @@ class Nexus {
       NexusLog.debug('autoTrackSessions is off — no session started');
     }
 
+    // Go live once the session/identity is set, so realtime auth carries it.
+    if (config.autoConnectRealtime) {
+      realtime.connect();
+      _realtimeWasConnected = true;
+      NexusLog.info('realtime auto-connecting');
+    }
+
     if (config.replayEnabled) {
       await replay.start();
       NexusLog.info('session replay enabled');

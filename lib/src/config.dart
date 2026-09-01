@@ -8,6 +8,7 @@ class NexusConfig {
     this.realtimeUrl,
     this.autoTrackSessions = true,
     this.autoCaptureErrors = true,
+    this.autoConnectRealtime = false,
     this.manageRealtimeWithLifecycle = true,
     this.flushOnBackground = true,
     this.flushInterval = const Duration(seconds: 10),
@@ -40,6 +41,13 @@ class NexusConfig {
 
   /// Install a Flutter error handler that reports uncaught errors. Default `true`.
   final bool autoCaptureErrors;
+
+  /// Open the realtime (Socket.IO) connection automatically at startup, right
+  /// after the session is established — so the user is live without a manual
+  /// `nexus.realtime.connect()`. Rooms are still joined via
+  /// `nexus.realtime.join(...)`. Default `false` (realtime connection-minutes
+  /// are billed — opt in). Works with [manageRealtimeWithLifecycle].
+  final bool autoConnectRealtime;
 
   /// Gracefully disconnect realtime when the app is backgrounded and reconnect
   /// (rejoining rooms) on foreground. This makes billed connection-minutes
