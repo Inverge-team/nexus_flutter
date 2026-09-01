@@ -19,6 +19,7 @@ class NexusConfig {
     this.replayInterval = const Duration(milliseconds: 1000),
     this.replayPixelRatio = 1.0,
     this.replayMaskTextFields = true,
+    this.replayCaptureConsole = true,
     this.appVersion,
     this.defaultProperties = const {},
   });
@@ -87,6 +88,11 @@ class NexusConfig {
   /// replay frames, so typed content (passwords, PII) is never captured. On by
   /// default; use `NexusMask` for finer control. Set `false` to opt out.
   final bool replayMaskTextFields;
+
+  /// Tee the app's `debugPrint` output into the replay stream so it shows in the
+  /// player's Console tab (mirrors rrweb's console plugin). SDK-internal
+  /// `[Nexus]` lines are skipped. On by default; set `false` to opt out.
+  final bool replayCaptureConsole;
 
   /// App version reported with telemetry (e.g. from package_info). Optional.
   final String? appVersion;

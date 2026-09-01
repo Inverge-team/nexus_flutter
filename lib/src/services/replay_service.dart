@@ -71,6 +71,29 @@ class NexusReplay {
   void pause() => _controller.pause();
   void resume() => _controller.resume();
 
+  /// Record a page/route change (populates the player's Pages tab). Usually
+  /// wired automatically via [NexusNavigatorObserver]; call manually for custom
+  /// navigation. No-op when replay is disabled.
+  void trackScreen(String name) => _controller.trackScreen(name);
+
+  /// Record a network request for the player's Network tab — feed this from
+  /// your HTTP client's interceptor (e.g. a Dio interceptor). No-op unless
+  /// recording.
+  void recordNetwork({
+    required String url,
+    required String method,
+    required int status,
+    required int durationMs,
+    int? size,
+  }) =>
+      _controller.recordNetwork(
+        url: url,
+        method: method,
+        status: status,
+        durationMs: durationMs,
+        size: size,
+      );
+
   Future<void> flush() => _queue.flush();
 
   /// Receive one rrweb event from the Flutter capture engine.

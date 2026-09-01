@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
@@ -37,6 +38,10 @@ class NexusReplayController {
   bool _capturing = false;
   bool _warnedNoScope = false;
   int? _lastHash;
+  int? _lastW;
+  int? _lastH;
+  String _currentHref = 'app:///';
+  DebugPrintCallback? _originalDebugPrint;
 
   // Pointer-move batching (rrweb expects grouped move positions).
   final List<Map<String, Object?>> _moveBuffer = [];
@@ -50,6 +55,7 @@ class NexusReplayController {
     _paused = false;
     _sentFirst = false;
     _lastHash = null;
+    _installConsoleCapture();
     _timer = Timer.periodic(_cfg.replayInterval, (_) => _tick());
     NexusLog.info('replay recording started (frame every ${_cfg.replayInterval.inMilliseconds}ms)');
     // First frame after the next frame is committed — by then NexusScope (added
@@ -63,7 +69,33 @@ class NexusReplayController {
     _timer?.cancel();
     _timer = null;
     _flushMoves();
+    _restoreConsoleCapture();
     NexusLog.debug('replay recording stopped');
+  }
+
+  /// Record a page/route change — populates the player's Pages tab. Called by
+  /// [NexusNavigatorObserver] or manually via `nexus.trackScreen(name)`.
+  void trackScreen(String name) {
+    final clean = name.replaceFirst(RegExp(r'^/+'), '');
+    _currentHref = 'app:///$clean';
+    // Emit now if we know the viewport (a meta must carry it so the player
+    // doesn't resize to 0); otherwise the first frame will use this href.
+    if (_sentFirst && _lastW != null && _lastH != null) {
+      _emit(Rrweb.meta(href: _currentHref, width: _lastW!, height: _lastH!));
+      NexusLog.debug('replay: page → $_currentHref');
+    }
+  }
+
+  /// Record a network request — populates the player's Network tab.
+  void recordNetwork({
+    required String url,
+    required String method,
+    required int status,
+    required int durationMs,
+    int? size,
+  }) {
+    if (!_recording) return;
+    _emit(Rrweb.network(url: url, method: method, status: status, duration: durationMs, size: size));
   }
 
   void pause() => _paused = true;
@@ -131,10 +163,12 @@ class NexusReplayController {
     if (hash == _lastHash) return;
     _lastHash = hash;
 
+    _lastW = w;
+    _lastH = h;
     final dataUri = 'data:image/png;base64,${base64Encode(bytes)}';
     if (!_sentFirst) {
       _sentFirst = true;
-      _emit(Rrweb.meta(href: 'app://flutter/', width: w, height: h));
+      _emit(Rrweb.meta(href: _currentHref, width: w, height: h));
       _emit(Rrweb.fullSnapshot(dataUri: dataUri, width: w, height: h));
       NexusLog.debug('replay: first frame captured (${w}x$h, ${bytes.length ~/ 1024}KB)');
     } else {
@@ -191,6 +225,7 @@ class NexusReplayController {
     if (!_recording) return;
     _flushMoves();
     _emit(Rrweb.pointerUp(p.dx, p.dy));
+    _emit(Rrweb.click(p.dx, p.dy)); // so the inspector registers the tap
   }
 
   void onPointerMove(Offset p) {
@@ -207,6 +242,36 @@ class NexusReplayController {
     final positions = List<Map<String, Object?>>.from(_moveBuffer);
     _moveBuffer.clear();
     _emit(Rrweb.pointerMove(positions));
+  }
+
+  // ---- console capture (Console tab) ----
+
+  /// Tee `debugPrint` into the replay stream so the app's logs show in the
+  /// player's Console tab, mirroring rrweb's console plugin. Our own `[Nexus]`
+  /// lines are skipped to avoid a feedback loop.
+  void _installConsoleCapture() {
+    if (!_cfg.replayCaptureConsole || _originalDebugPrint != null) return;
+    _originalDebugPrint = debugPrint;
+    debugPrint = (String? message, {int? wrapWidth}) {
+      _originalDebugPrint?.call(message, wrapWidth: wrapWidth);
+      if (message == null || !_recording || _paused) return;
+      if (message.startsWith('[Nexus]')) return;
+      _emit(Rrweb.consoleLog(_consoleLevel(message), message));
+    };
+  }
+
+  void _restoreConsoleCapture() {
+    if (_originalDebugPrint != null) {
+      debugPrint = _originalDebugPrint!;
+      _originalDebugPrint = null;
+    }
+  }
+
+  static String _consoleLevel(String m) {
+    final lower = m.toLowerCase();
+    if (lower.contains('error') || lower.contains('exception')) return 'error';
+    if (lower.contains('warn')) return 'warn';
+    return 'log';
   }
 
   /// FNV-1a over a sampled subset of the PNG — enough to detect a changed frame

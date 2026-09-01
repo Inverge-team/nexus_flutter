@@ -25,6 +25,7 @@ export 'src/services/links_service.dart' show NexusLinks;
 export 'src/services/realtime_service.dart' show NexusRealtime, NexusEventHandler;
 export 'src/services/replay_service.dart' show NexusReplay;
 export 'src/replay/replay_mask.dart' show NexusMask;
+export 'src/replay/nexus_navigator_observer.dart' show NexusNavigatorObserver;
 
 // Advanced: native platform surface (device info + replay capture).
 export 'nexus_platform_interface.dart' show NexusPlatform;

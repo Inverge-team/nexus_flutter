@@ -206,6 +206,10 @@ class Nexus {
   /// Forget the current user and start a fresh session (e.g. on logout).
   void reset() => sessions.reset();
 
+  /// Record a screen/page change for session replay's Pages tab. Wire
+  /// [NexusNavigatorObserver] into `navigatorObservers` to do this automatically.
+  void trackScreen(String name) => replay.trackScreen(name);
+
   String? get distinctId => _identity.distinctId;
   String get sessionKey => _identity.sessionKey;
 

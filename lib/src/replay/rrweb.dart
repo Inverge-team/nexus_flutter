@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 /// Builders for rrweb-compatible replay events.
 ///
 /// Flutter has no DOM, so we model a screen as a single full-page `<img>` inside
@@ -117,6 +119,54 @@ class Rrweb {
       _interaction(7, x, y, timestamp);
   static Map<String, Object?> pointerUp(double x, double y, {int? timestamp}) =>
       _interaction(9, x, y, timestamp);
+
+  /// A tap, as rrweb MouseInteraction Click=2 (what the inspector counts).
+  static Map<String, Object?> click(double x, double y, {int? timestamp}) =>
+      _interaction(2, x, y, timestamp);
+
+  /// A console line (rrweb console plugin) — surfaces in the player's Console tab.
+  static Map<String, Object?> consoleLog(String level, String message, {int? timestamp}) => {
+        'type': 6,
+        'data': {
+          'plugin': 'rrweb/console@1',
+          'payload': {
+            'level': level,
+            'trace': <Object?>[],
+            'payload': [jsonEncode(message)],
+          },
+        },
+        'timestamp': timestamp ?? now(),
+      };
+
+  /// A network request (rrweb network plugin) — surfaces in the Network tab.
+  static Map<String, Object?> network({
+    required String url,
+    required String method,
+    required int status,
+    required num duration,
+    num? size,
+    int? startTime,
+    int? timestamp,
+  }) =>
+      {
+        'type': 6,
+        'data': {
+          'plugin': 'rrweb/network@1',
+          'payload': {
+            'requests': [
+              {
+                'url': url,
+                'method': method,
+                'status': status,
+                'duration': duration,
+                'startTime': startTime ?? (timestamp ?? now()),
+                if (size != null) 'transferSize': size,
+              },
+            ],
+          },
+        },
+        'timestamp': timestamp ?? now(),
+      };
 
   static Map<String, Object?> _interaction(int type, double x, double y, int? timestamp) => {
         'type': 3,

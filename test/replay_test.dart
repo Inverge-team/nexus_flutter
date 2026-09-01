@@ -104,6 +104,67 @@ void main() {
     expect(masked == unmasked, isFalse, reason: 'redacting the text field must change the frame');
   });
 
+  testWidgets('emits page (meta), click, and network context events', (tester) async {
+    final events = <Map<String, Object?>>[];
+    const cfg = NexusConfig(
+      apiKey: 'k',
+      replayEnabled: true,
+      replayPixelRatio: 1.0,
+      replayCaptureConsole: false,
+    );
+    final controller = NexusReplayController(cfg, events.add);
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: RepaintBoundary(
+          key: controller.repaintBoundaryKey,
+          child: Container(width: 80, height: 80, color: const Color(0xFF123456)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.runAsync(() => controller.captureFrameForTest()); // records + sizes
+
+    controller.trackScreen('/orders/42');
+    controller.onPointerDown(const Offset(10, 10));
+    controller.onPointerUp(const Offset(10, 10));
+    controller.recordNetwork(url: 'https://api/x', method: 'GET', status: 200, durationMs: 12);
+
+    final metas = events.where((e) => e['type'] == 4).toList();
+    expect(metas.length, greaterThanOrEqualTo(2), reason: 'first-frame meta + page meta');
+    expect((metas.last['data'] as Map)['href'], 'app:///orders/42');
+
+    final click = events.any((e) =>
+        e['type'] == 3 && (e['data'] as Map)['source'] == 2 && (e['data'] as Map)['type'] == 2);
+    expect(click, isTrue, reason: 'tap emits a MouseInteraction Click');
+
+    final net = events.firstWhere(
+      (e) => e['type'] == 6 && (e['data'] as Map)['plugin'] == 'rrweb/network@1',
+      orElse: () => {},
+    );
+    expect(net, isNotEmpty);
+
+    controller.dispose();
+  });
+
+  testWidgets('tees debugPrint into console events while recording', (tester) async {
+    final events = <Map<String, Object?>>[];
+    const cfg = NexusConfig(apiKey: 'k', replayEnabled: true, replayCaptureConsole: true);
+    final controller = NexusReplayController(cfg, events.add);
+
+    controller.start();
+    debugPrint('hello from app');
+    debugPrint('[Nexus] internal log'); // must be skipped (no feedback loop)
+    controller.stop();
+
+    final consoles = events
+        .where((e) => e['type'] == 6 && (e['data'] as Map)['plugin'] == 'rrweb/console@1')
+        .toList();
+    expect(consoles.length, 1);
+    final payload = ((consoles.first['data'] as Map)['payload'] as Map)['payload'] as List;
+    expect(payload.first.toString().contains('hello from app'), isTrue);
+  });
+
   testWidgets('NexusMask registers while mounted and cleans up', (tester) async {
     expect(NexusMaskRegistry.instance.isEmpty, isTrue);
     await tester.pumpWidget(
