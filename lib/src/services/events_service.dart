@@ -19,8 +19,12 @@ class NexusEvents {
   final NexusConfig _cfg;
   late final BatchQueue<Map<String, Object?>> _queue;
 
+  /// Notified with each tracked event name (used to fire survey event triggers).
+  void Function(String name)? onTracked;
+
   /// Track a named event with optional properties.
   void track(String name, {Map<String, Object?>? properties}) {
+    onTracked?.call(name);
     _queue.add({
       'name': name,
       if (properties != null || _cfg.defaultProperties.isNotEmpty)

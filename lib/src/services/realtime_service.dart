@@ -59,14 +59,14 @@ class NexusRealtime {
   Future<dynamic> join(String room) {
     _rooms.add(room);
     NexusLog.info('realtime join "$room"');
-    return _ackEmit('room.join', {'room': room}, label: 'join "$room"');
+    return _ackEmit('room.join', {'name': room}, label: 'join "$room"');
   }
 
   /// Leave a room. Returns the server's acknowledgement (`{ ok }`).
   Future<dynamic> leave(String room) {
     _rooms.remove(room);
     NexusLog.info('realtime leave "$room"');
-    return _ackEmit('room.leave', {'room': room}, label: 'leave "$room"');
+    return _ackEmit('room.leave', {'name': room}, label: 'leave "$room"');
   }
 
   /// Emit one or more named events to a room with a payload. Returns the

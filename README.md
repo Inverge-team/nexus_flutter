@@ -30,7 +30,7 @@ Future<void> main() async {
 
   await Nexus.init(const NexusConfig(
     apiKey: 'nxs_your_api_key',
-    baseUrl: 'https://api.nexus.inverge.net',
+    baseUrl: 'https://nexus.inverge.net',
   ));
 
   // optional: identify the end-user — everything after is attributed to them

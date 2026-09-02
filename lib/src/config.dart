@@ -4,7 +4,7 @@ import 'logging.dart';
 class NexusConfig {
   const NexusConfig({
     required this.apiKey,
-    this.baseUrl = 'https://api.nexus.inverge.net',
+    this.baseUrl = 'https://nexus.inverge.net',
     this.realtimeUrl,
     this.autoTrackSessions = true,
     this.autoCaptureErrors = true,
@@ -22,6 +22,8 @@ class NexusConfig {
     this.replayMaskTextFields = true,
     this.replayCaptureConsole = true,
     this.replayCaptureNetwork = true,
+    this.surveysEnabled = false,
+    this.surveyAutoShow = true,
     this.appVersion,
     this.defaultProperties = const {},
   });
@@ -109,6 +111,16 @@ class NexusConfig {
   /// default (no effect on web — use a Dio interceptor there). Set `false` to
   /// opt out (e.g. if the app installs its own `HttpOverrides`).
   final bool replayCaptureNetwork;
+
+  /// Fetch eligible in-product surveys at startup (and on foreground). Requires
+  /// `NexusSurveyOverlay` in your `MaterialApp.builder` to display them. Default
+  /// `false` (billed per response — opt in).
+  final bool surveysEnabled;
+
+  /// Automatically show eligible popover/banner surveys (and event-triggered
+  /// ones on `events.track`). Set `false` to present surveys manually via
+  /// `nexus.surveys.show(...)`. Default `true`.
+  final bool surveyAutoShow;
 
   /// App version reported with telemetry (e.g. from package_info). Optional.
   final String? appVersion;

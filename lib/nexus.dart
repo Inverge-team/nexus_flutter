@@ -27,5 +27,13 @@ export 'src/services/replay_service.dart' show NexusReplay;
 export 'src/replay/replay_mask.dart' show NexusMask;
 export 'src/replay/nexus_navigator_observer.dart' show NexusNavigatorObserver;
 
+// Surveys: service, models, controller, and the customizable UI.
+export 'src/services/surveys_service.dart' show NexusSurveys;
+export 'src/surveys/survey_models.dart'
+    show NexusSurvey, NexusSurveyQuestion, NexusSurveyChoice, NexusSurveyTrigger;
+export 'src/surveys/survey_controller.dart' show NexusSurveyController, SurveySubmit;
+export 'src/surveys/survey_view.dart' show NexusSurveyView, NexusQuestionBuilder;
+export 'src/surveys/survey_overlay.dart' show NexusSurveyOverlay, NexusSurveyBuilder;
+
 // Advanced: native platform surface (device info + replay capture).
 export 'nexus_platform_interface.dart' show NexusPlatform;

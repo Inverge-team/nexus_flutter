@@ -7,7 +7,7 @@ Future<void> main() async {
   // Initialise once, at startup — like the WebSocket SDK.
   await Nexus.init(const NexusConfig(
     apiKey: 'nxs_your_api_key',
-    baseUrl: 'https://api.nexus.inverge.net',
+    baseUrl: 'https://nexus.inverge.net',
     logging: true,
   ));
 

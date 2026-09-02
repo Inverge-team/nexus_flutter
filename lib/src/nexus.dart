@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,6 +19,7 @@ import 'services/logs_service.dart';
 import 'services/realtime_service.dart';
 import 'services/replay_service.dart';
 import 'services/sessions_service.dart';
+import 'services/surveys_service.dart';
 
 /// The Nexus umbrella SDK — one entry point for every service. Initialise once
 /// at startup; then use any service, all correlated to the same journey session:
@@ -63,6 +66,7 @@ class Nexus {
   late final NexusLinks links;
   late final NexusRealtime realtime;
   late final NexusReplay replay;
+  late final NexusSurveys surveys;
 
   /// Initialise the SDK once at startup. Re-calling disposes the previous
   /// instance and replaces it.
@@ -102,6 +106,9 @@ class Nexus {
     links = NexusLinks(_http, _identity);
     realtime = NexusRealtime(config, _identity);
     replay = NexusReplay(_outbox, _identity, config);
+    surveys = NexusSurveys(_http, _identity, config);
+    // Event-triggered surveys fire off analytics events.
+    events.onTracked = surveys.onEvent;
 
     if (config.autoCaptureErrors) {
       errors.install();
@@ -123,6 +130,11 @@ class Nexus {
     if (config.replayEnabled) {
       await replay.start();
       NexusLog.info('session replay enabled');
+    }
+
+    // Fetch eligible surveys once the session is established (best-effort).
+    if (config.surveysEnabled) {
+      unawaited(surveys.fetch());
     }
 
     // Foreground/background hooks — keeps connection-minutes accurate.
@@ -153,6 +165,8 @@ class Nexus {
     }
     // Retry any telemetry that queued while offline/suspended.
     await _outbox.drain();
+    // Re-check for newly-eligible surveys.
+    if (config.surveysEnabled) unawaited(surveys.fetch());
   }
 
   /// A stable, per-install device id — generated once and persisted (natively,
@@ -245,6 +259,7 @@ class Nexus {
     events.dispose();
     logs.dispose();
     replay.dispose();
+    surveys.dispose();
     realtime.disconnect();
     _outbox.dispose();
     _http.close();
