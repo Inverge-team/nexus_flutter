@@ -1,6 +1,6 @@
 name: nexus_flutter
 description: "Nexus — one Flutter SDK for all Inverge Nexus services (realtime, sessions, events, errors, logs, feature flags, links, session replay)."
-version: 0.1.0
+version: 1.0.0
 homepage: https://nexus.inverge.net
 repository: https://github.com/Inverge-team/sdks.nexus.inverge.net
 
@@ -14,10 +14,10 @@ dependencies:
   flutter_web_plugins:
     sdk: flutter
   web: ^1.0.0
-  plugin_platform_interface: ^2.0.2
-  http: ^1.2.0
-  socket_io_client: ^2.0.3+1
-  shared_preferences: ^2.2.0
+  plugin_platform_interface: ^2.1.8
+  http: ^1.6.0
+  socket_io_client: ^3.1.6
+  shared_preferences: ^2.5.5
   package_info_plus: ^10.2.1
   # Only used by the optional `package:nexus_flutter/nexus_dio.dart` library.
   dio: ^5.0.0
