@@ -24,6 +24,9 @@ class NexusConfig {
     this.replayCaptureNetwork = true,
     this.surveysEnabled = false,
     this.surveyAutoShow = true,
+    this.remoteConfigEnabled = false,
+    this.remoteConfigRealtime = false,
+    this.remoteConfigDefaults = const {},
     this.appVersion,
     this.defaultProperties = const {},
   });
@@ -121,6 +124,20 @@ class NexusConfig {
   /// ones on `events.track`). Set `false` to present surveys manually via
   /// `nexus.surveys.show(...)`. Default `true`.
   final bool surveyAutoShow;
+
+  /// Fetch Remote Config at startup (and on foreground). Read values via
+  /// `nexus.remoteConfig.getString(...)` etc. Default `false` (billed per fetch
+  /// — opt in). Set in-app fallbacks with [remoteConfigDefaults].
+  final bool remoteConfigEnabled;
+
+  /// Subscribe to realtime Remote Config updates: when a new template is
+  /// published, the app re-fetches automatically (Firebase Realtime RC). Needs
+  /// a realtime connection (see [autoConnectRealtime]). Default `false`.
+  final bool remoteConfigRealtime;
+
+  /// In-app default Remote Config values, used until/unless the server provides
+  /// a value for a key. Mirrors Firebase `setDefaults`.
+  final Map<String, Object?> remoteConfigDefaults;
 
   /// App version reported with telemetry (e.g. from package_info). Optional.
   final String? appVersion;

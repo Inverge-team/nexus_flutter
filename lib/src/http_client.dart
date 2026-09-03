@@ -29,14 +29,19 @@ class NexusHttp {
 
   /// POST JSON to a `/partner/...` path. Returns the decoded body, or null on
   /// failure. Every request is traced at debug level; non-2xx and errors are
-  /// logged at warn/error so failures are never silent.
-  Future<Map<String, dynamic>?> post(String path, Map<String, Object?> body) async {
+  /// logged at warn/error so failures are never silent. [extraHeaders] are
+  /// merged over the defaults (e.g. `If-None-Match` for conditional fetches).
+  Future<Map<String, dynamic>?> post(
+    String path,
+    Map<String, Object?> body, {
+    Map<String, String>? extraHeaders,
+  }) async {
     final uri = Uri.parse('${_config.httpBase}$path');
     final sw = Stopwatch()..start();
     NexusLog.debug('→ POST $path');
     try {
       final res = await _client
-          .post(uri, headers: _headers, body: jsonEncode(body))
+          .post(uri, headers: {..._headers, ...?extraHeaders}, body: jsonEncode(body))
           .timeout(const Duration(seconds: 20));
       final ms = sw.elapsedMilliseconds;
       if (res.statusCode >= 200 && res.statusCode < 300) {

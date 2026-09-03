@@ -23,6 +23,7 @@ export 'src/services/logs_service.dart' show NexusLogs;
 export 'src/services/flags_service.dart' show NexusFlags;
 export 'src/services/links_service.dart' show NexusLinks;
 export 'src/services/realtime_service.dart' show NexusRealtime, NexusEventHandler;
+export 'src/services/remote_config_service.dart' show NexusRemoteConfig;
 export 'src/services/replay_service.dart' show NexusReplay;
 export 'src/replay/replay_mask.dart' show NexusMask;
 export 'src/replay/nexus_navigator_observer.dart' show NexusNavigatorObserver;

@@ -17,6 +17,7 @@ import 'services/flags_service.dart';
 import 'services/links_service.dart';
 import 'services/logs_service.dart';
 import 'services/realtime_service.dart';
+import 'services/remote_config_service.dart';
 import 'services/replay_service.dart';
 import 'services/sessions_service.dart';
 import 'services/surveys_service.dart';
@@ -67,6 +68,7 @@ class Nexus {
   late final NexusRealtime realtime;
   late final NexusReplay replay;
   late final NexusSurveys surveys;
+  late final NexusRemoteConfig remoteConfig;
 
   /// Initialise the SDK once at startup. Re-calling disposes the previous
   /// instance and replaces it.
@@ -107,6 +109,7 @@ class Nexus {
     realtime = NexusRealtime(config, _identity);
     replay = NexusReplay(_outbox, _identity, config);
     surveys = NexusSurveys(_http, _identity, config);
+    remoteConfig = NexusRemoteConfig(_http, _identity, config);
     // Event-triggered surveys fire off analytics events.
     events.onTracked = surveys.onEvent;
 
@@ -135,6 +138,14 @@ class Nexus {
     // Fetch eligible surveys once the session is established (best-effort).
     if (config.surveysEnabled) {
       unawaited(surveys.fetch());
+    }
+
+    // Fetch remote config, and (optionally) subscribe to realtime updates.
+    if (config.remoteConfigEnabled) {
+      unawaited(remoteConfig.fetch());
+    }
+    if (config.remoteConfigRealtime && (config.autoConnectRealtime || realtime.isConnected)) {
+      unawaited(remoteConfig.subscribeRealtime(realtime));
     }
 
     // Foreground/background hooks — keeps connection-minutes accurate.
@@ -167,6 +178,12 @@ class Nexus {
     await _outbox.drain();
     // Re-check for newly-eligible surveys.
     if (config.surveysEnabled) unawaited(surveys.fetch());
+    // Refresh remote config (values may have changed while backgrounded) and
+    // re-arm the realtime subscription if realtime reconnected.
+    if (config.remoteConfigEnabled) unawaited(remoteConfig.fetch());
+    if (config.remoteConfigRealtime && realtime.isConnected) {
+      unawaited(remoteConfig.subscribeRealtime(realtime));
+    }
   }
 
   /// A stable, per-install device id — generated once and persisted (natively,
@@ -260,6 +277,7 @@ class Nexus {
     logs.dispose();
     replay.dispose();
     surveys.dispose();
+    remoteConfig.dispose();
     realtime.disconnect();
     _outbox.dispose();
     _http.close();
