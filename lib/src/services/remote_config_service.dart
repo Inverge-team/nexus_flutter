@@ -30,6 +30,7 @@ class NexusRemoteConfig {
 
   final Map<String, Object?> _values = {};
   final Map<String, String?> _sources = {};
+  final Map<String, Object?> _attributes = {};
   Map<String, Object?> _defaults = {};
 
   final StreamController<void> _changes = StreamController<void>.broadcast();
@@ -50,12 +51,33 @@ class NexusRemoteConfig {
   /// Merges with any existing defaults. Mirrors Firebase `setDefaults`.
   void setDefaults(Map<String, Object?> defaults) => _defaults = {..._defaults, ...defaults};
 
+  /// Custom targeting attributes sent with every fetch (e.g. `governorate`,
+  /// `plan`, `segment`). These feed "Custom attribute" conditions on the server.
+  /// Merges with existing attributes; call [clearAttributes] to reset. Mirrors
+  /// Firebase custom signals. Values must be string/number/bool.
+  void setAttributes(Map<String, Object?> attributes) => _attributes.addAll(attributes);
+
+  /// Set (or replace) a single custom targeting attribute. Pass `null` to remove.
+  void setAttribute(String key, Object? value) {
+    if (value == null) {
+      _attributes.remove(key);
+    } else {
+      _attributes[key] = value;
+    }
+  }
+
+  /// The custom targeting attributes currently sent with fetches.
+  Map<String, Object?> get attributes => Map.unmodifiable(_attributes);
+
+  void clearAttributes() => _attributes.clear();
+
   /// Fetch the active template and activate it. Returns `true` when the values
-  /// changed since the last fetch. Best-effort — never throws.
-  Future<bool> fetch({Map<String, Object?>? context}) async {
+  /// changed since the last fetch. [attributes] are merged (for this fetch only)
+  /// over the persistent ones set via [setAttributes]. Best-effort — never throws.
+  Future<bool> fetch({Map<String, Object?>? attributes}) async {
     final res = await _http.post(
       '/partner/remote-config/fetch',
-      _buildContext(context),
+      _buildContext(attributes),
       extraHeaders: _etag != null ? {'if-none-match': _etag!} : null,
     );
     if (res == null) return false; // request failed — keep current values
@@ -158,19 +180,24 @@ class NexusRemoteConfig {
     _realtime = null;
   }
 
-  Map<String, Object?> _buildContext(Map<String, Object?>? overrides) {
+  Map<String, Object?> _buildContext(Map<String, Object?>? oneShotAttributes) {
     final dc = _id.deviceContext;
-    final ctx = <String, Object?>{
+    return <String, Object?>{
       'appInstanceId': _id.deviceKey,
       if ((_cfg.appVersion ?? dc['appVersion']) != null)
         'appVersion': _cfg.appVersion ?? dc['appVersion'],
       if (dc['osType'] is String) 'platform': (dc['osType'] as String).toLowerCase(),
       if (dc['osVersion'] is String) 'osVersion': dc['osVersion'],
       ..._locale(),
-      'userProperties': {..._cfg.defaultProperties, ..._id.traits},
+      // Custom attributes feed "Custom attribute" conditions. Later entries win:
+      // config defaults < identity traits < persistent attributes < this fetch's.
+      'userProperties': {
+        ..._cfg.defaultProperties,
+        ..._id.traits,
+        ..._attributes,
+        ...?oneShotAttributes,
+      },
     };
-    if (overrides != null) ctx.addAll(overrides);
-    return ctx;
   }
 
   Map<String, Object?> _locale() {
