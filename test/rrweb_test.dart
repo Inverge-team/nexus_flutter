@@ -3,7 +3,11 @@ import 'package:nexus_flutter/src/replay/rrweb.dart';
 
 void main() {
   test('full snapshot models a full-page <img>', () {
-    final full = Rrweb.fullSnapshot(dataUri: 'data:image/png;base64,AAA', width: 100, height: 200);
+    final full = Rrweb.fullSnapshot(
+      dataUri: 'data:image/png;base64,AAA',
+      width: 100,
+      height: 200,
+    );
     expect(full['type'], 2);
     final node = (full['data'] as Map)['node'] as Map;
     expect(node['type'], 0); // Document

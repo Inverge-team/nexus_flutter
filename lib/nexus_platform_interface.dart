@@ -32,7 +32,9 @@ abstract class NexusPlatform extends PlatformInterface {
   Future<void> stopReplay() async {}
 
   /// Register a sink for batches of replay events pushed up from native.
-  void onReplayBatch(void Function(String recordingId, List<Object?> events) sink) {}
+  void onReplayBatch(
+    void Function(String recordingId, List<Object?> events) sink,
+  ) {}
 
   /// Install (or remove) the native uncaught-exception / signal handlers that
   /// persist crashes for forwarding on the next launch. No-op where unsupported.

@@ -21,7 +21,9 @@ class MethodChannelNexus extends NexusPlatform {
   @override
   Future<Map<String, Object?>> deviceInfo() async {
     try {
-      final res = await methodChannel.invokeMethod<Map<dynamic, dynamic>>('deviceInfo');
+      final res = await methodChannel.invokeMethod<Map<dynamic, dynamic>>(
+        'deviceInfo',
+      );
       return (res ?? {}).map((k, v) => MapEntry(k.toString(), v as Object?));
     } catch (_) {
       return <String, Object?>{};
@@ -31,8 +33,12 @@ class MethodChannelNexus extends NexusPlatform {
   @override
   Future<void> startReplay(String recordingId) async {
     try {
-      await methodChannel.invokeMethod('startReplay', {'recordingId': recordingId});
-    } catch (_) {/* native replay not available on this platform */}
+      await methodChannel.invokeMethod('startReplay', {
+        'recordingId': recordingId,
+      });
+    } catch (_) {
+      /* native replay not available on this platform */
+    }
   }
 
   @override
@@ -43,19 +49,26 @@ class MethodChannelNexus extends NexusPlatform {
   }
 
   @override
-  void onReplayBatch(void Function(String, List<Object?>) sink) => _replaySink = sink;
+  void onReplayBatch(void Function(String, List<Object?>) sink) =>
+      _replaySink = sink;
 
   @override
   Future<void> configureCrashReporting(bool enabled) async {
     try {
-      await methodChannel.invokeMethod('configureCrashReporting', {'enabled': enabled});
-    } catch (_) {/* native crash reporting unavailable on this platform */}
+      await methodChannel.invokeMethod('configureCrashReporting', {
+        'enabled': enabled,
+      });
+    } catch (_) {
+      /* native crash reporting unavailable on this platform */
+    }
   }
 
   @override
   Future<List<Map<String, Object?>>> takePendingCrashes() async {
     try {
-      final res = await methodChannel.invokeMethod<List<dynamic>>('takePendingCrashes');
+      final res = await methodChannel.invokeMethod<List<dynamic>>(
+        'takePendingCrashes',
+      );
       return (res ?? const [])
           .whereType<Map>()
           .map((m) => m.map((k, v) => MapEntry(k.toString(), v as Object?)))

@@ -1,5 +1,6 @@
 /// Client-side survey models, parsed from `/partner/surveys/active`. Pure Dart
 /// (no Flutter) so they can be used and tested without a widget tree.
+library;
 
 class NexusSurveyChoice {
   const NexusSurveyChoice({required this.value, this.label, this.open = false});
@@ -62,7 +63,9 @@ class NexusSurveyQuestion {
       label: '${m['label'] ?? ''}',
       description: m['description'] as String?,
       required: m['required'] == true,
-      choices: (m['choices'] as List?)?.map(NexusSurveyChoice.fromJson).toList() ?? const [],
+      choices:
+          (m['choices'] as List?)?.map(NexusSurveyChoice.fromJson).toList() ??
+          const [],
       display: m['display'] as String?,
       scaleMin: (m['scaleMin'] as num?)?.toInt(),
       scaleMax: (m['scaleMax'] as num?)?.toInt(),
@@ -75,7 +78,12 @@ class NexusSurveyQuestion {
 }
 
 class NexusSurveyTrigger {
-  const NexusSurveyTrigger({this.events = const [], this.delaySeconds, this.minInterval, this.selector});
+  const NexusSurveyTrigger({
+    this.events = const [],
+    this.delaySeconds,
+    this.minInterval,
+    this.selector,
+  });
 
   final List<String> events;
   final int? delaySeconds;
@@ -120,7 +128,8 @@ class NexusSurvey {
   String? get position => appearance['position'] as String?;
   String? get primaryColorHex => appearance['primaryColor'] as String?;
   String? get thankYouTitle => appearance['thankYouTitle'] as String?;
-  String get thankYouMessage => (appearance['thankYouMessage'] as String?) ?? 'Thanks for your feedback!';
+  String get thankYouMessage =>
+      (appearance['thankYouMessage'] as String?) ?? 'Thanks for your feedback!';
   bool get showThankYou => appearance['showThankYou'] as bool? ?? true;
   bool get showProgressBar => appearance['showProgressBar'] as bool? ?? true;
   String? get submitButtonText => appearance['submitButtonText'] as String?;
@@ -132,15 +141,24 @@ class NexusSurvey {
       id: '${m['id'] ?? ''}',
       name: '${m['name'] ?? ''}',
       type: '${m['type'] ?? 'popover'}',
-      questions: (m['questions'] as List?)
-              ?.map((q) => NexusSurveyQuestion.fromJson((q as Map).cast<String, dynamic>()))
+      questions:
+          (m['questions'] as List?)
+              ?.map(
+                (q) => NexusSurveyQuestion.fromJson(
+                  (q as Map).cast<String, dynamic>(),
+                ),
+              )
               .toList() ??
           const [],
-      appearance: (m['appearance'] as Map?)?.cast<String, Object?>() ?? const {},
-      trigger: NexusSurveyTrigger.fromJson((m['trigger'] as Map?)?.cast<String, dynamic>()),
+      appearance:
+          (m['appearance'] as Map?)?.cast<String, Object?>() ?? const {},
+      trigger: NexusSurveyTrigger.fromJson(
+        (m['trigger'] as Map?)?.cast<String, dynamic>(),
+      ),
       iterationKey: m['iterationKey'] as String?,
       resumeResponseId: resume?['responseId'] as String?,
-      resumeAnswers: (resume?['answers'] as Map?)?.cast<String, Object?>() ?? const {},
+      resumeAnswers:
+          (resume?['answers'] as Map?)?.cast<String, Object?>() ?? const {},
     );
   }
 }

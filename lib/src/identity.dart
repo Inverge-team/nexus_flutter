@@ -4,7 +4,9 @@ import 'dart:math';
 /// its telemetry so the backend correlates realtime, events, errors, logs and
 /// replay into one session — the umbrella's core value.
 class NexusIdentity {
-  NexusIdentity() : sessionKey = _randomId('sess'), deviceKey = _randomId('dev');
+  NexusIdentity()
+    : sessionKey = _randomId('sess'),
+      deviceKey = _randomId('dev');
 
   /// The end-user id, set via [Nexus.identify]. Null until identified.
   String? distinctId;

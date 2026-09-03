@@ -15,7 +15,8 @@ class NexusLifecycle {
   bool _backgrounded = false;
 
   void _onState(AppLifecycleState state) {
-    final isBackground = state == AppLifecycleState.paused ||
+    final isBackground =
+        state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached ||
         state == AppLifecycleState.hidden;
     if (isBackground && !_backgrounded) {

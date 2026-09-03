@@ -64,7 +64,8 @@ class _NexusInherited extends InheritedWidget {
   final Nexus nexus;
 
   @override
-  bool updateShouldNotify(_NexusInherited oldWidget) => nexus != oldWidget.nexus;
+  bool updateShouldNotify(_NexusInherited oldWidget) =>
+      nexus != oldWidget.nexus;
 }
 
 /// `context.nexus` — access the SDK from any widget.

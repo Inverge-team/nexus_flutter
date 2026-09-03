@@ -23,9 +23,9 @@ class NexusSessions {
     if (traits != null) _id.traits.addAll(traits);
     await _http.post('/partner/sessions/identify', {
       'distinctId': distinctId,
-      if (email != null) 'email': email,
-      if (name != null) 'name': name,
-      if (traits != null) 'traits': traits,
+      'email': ?email,
+      'name': ?name,
+      'traits': ?traits,
     });
     await track();
   }
@@ -42,13 +42,16 @@ class NexusSessions {
       'sessionKey': _id.sessionKey,
       if (_cfg.appVersion != null) 'appVersion': _cfg.appVersion,
       ..._id.wireContext,
-      if (context != null) ...context,
+      ...?context,
     });
-    final sessionId = res?['data']?['sessionId'] as String? ?? res?['sessionId'] as String?;
+    final sessionId =
+        res?['data']?['sessionId'] as String? ?? res?['sessionId'] as String?;
     if (sessionId != null) {
       NexusLog.info('session tracked → $sessionId');
     } else if (res == null) {
-      NexusLog.warn('session track failed — no session created (see the request error above)');
+      NexusLog.warn(
+        'session track failed — no session created (see the request error above)',
+      );
     } else {
       NexusLog.warn('session track returned no sessionId — response: $res');
     }

@@ -24,7 +24,10 @@ class NexusDioInterceptor extends Interceptor {
   }
 
   @override
-  void onResponse(Response<dynamic> response, ResponseInterceptorHandler handler) {
+  void onResponse(
+    Response<dynamic> response,
+    ResponseInterceptorHandler handler,
+  ) {
     _record(response.requestOptions, response.statusCode ?? 0, response);
     handler.next(response);
   }
@@ -35,14 +38,19 @@ class NexusDioInterceptor extends Interceptor {
     handler.next(err);
   }
 
-  void _record(RequestOptions options, int status, Response<dynamic>? response) {
+  void _record(
+    RequestOptions options,
+    int status,
+    Response<dynamic>? response,
+  ) {
     if (!Nexus.isInitialized) return;
     // Automatic HttpOverrides capture already observes this request (Dio uses
     // dart:io) — skip to avoid double-recording.
     if (NexusNetworkCapture.isActive) return;
     final start = options.extra[_startKey];
-    final duration =
-        start is int ? DateTime.now().millisecondsSinceEpoch - start : 0;
+    final duration = start is int
+        ? DateTime.now().millisecondsSinceEpoch - start
+        : 0;
 
     int? size;
     final len = response?.headers.value(Headers.contentLengthHeader);

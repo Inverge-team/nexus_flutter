@@ -34,7 +34,8 @@ class NexusFlags {
   }
 
   /// The variant key for a multivariate flag, or null.
-  String? variant(String key) => _flags[key] is String ? _flags[key] as String : null;
+  String? variant(String key) =>
+      _flags[key] is String ? _flags[key] as String : null;
 
   /// The remote-config payload for a flag, if any.
   Object? payload(String key) => _payloads[key];

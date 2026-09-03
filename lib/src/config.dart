@@ -151,5 +151,6 @@ class NexusConfig {
       logLevel ?? (logging ? NexusLogLevel.debug : NexusLogLevel.warn);
 
   String get httpBase => baseUrl.replaceAll(RegExp(r'/+$'), '');
-  String get socketBase => (realtimeUrl ?? baseUrl).replaceAll(RegExp(r'/+$'), '');
+  String get socketBase =>
+      (realtimeUrl ?? baseUrl).replaceAll(RegExp(r'/+$'), '');
 }

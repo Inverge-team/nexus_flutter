@@ -3,23 +3,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nexus_flutter/nexus.dart';
 
 NexusSurvey _survey() => NexusSurvey.fromJson({
-      'id': 's1',
-      'name': 'NPS survey',
-      'type': 'popover',
-      'appearance': {'thankYouMessage': 'Cheers!'},
-      'questions': [
-        {'id': 'q1', 'type': 'nps', 'label': 'How likely?', 'required': true},
-        {
-          'id': 'q2',
-          'type': 'single_choice',
-          'label': 'Why?',
-          'choices': [
-            {'value': 'fast'},
-            'slow',
-          ],
-        },
+  'id': 's1',
+  'name': 'NPS survey',
+  'type': 'popover',
+  'appearance': {'thankYouMessage': 'Cheers!'},
+  'questions': [
+    {'id': 'q1', 'type': 'nps', 'label': 'How likely?', 'required': true},
+    {
+      'id': 'q2',
+      'type': 'single_choice',
+      'label': 'Why?',
+      'choices': [
+        {'value': 'fast'},
+        'slow',
       ],
-    });
+    },
+  ],
+});
 
 void main() {
   test('parses a survey from JSON', () {
@@ -36,7 +36,12 @@ void main() {
   test('controller walks steps and submits a completed response', () async {
     Map<String, Object?>? submitted;
     bool? wasCompleted;
-    final c = NexusSurveyController(_survey(), (survey, answers, {completed = false, dismissed = false}) async {
+    final c = NexusSurveyController(_survey(), (
+      survey,
+      answers, {
+      completed = false,
+      dismissed = false,
+    }) async {
       submitted = answers;
       wasCompleted = completed;
     });
@@ -63,7 +68,12 @@ void main() {
 
   test('controller dismiss submits a dismissal', () async {
     bool? wasDismissed;
-    final c = NexusSurveyController(_survey(), (survey, answers, {completed = false, dismissed = false}) async {
+    final c = NexusSurveyController(_survey(), (
+      survey,
+      answers, {
+      completed = false,
+      dismissed = false,
+    }) async {
       wasDismissed = dismissed;
     });
     await c.dismiss();
@@ -71,22 +81,35 @@ void main() {
     expect(c.isDone, isTrue);
   });
 
-  testWidgets('default view renders the question; custom builder overrides it', (tester) async {
-    final c = NexusSurveyController(_survey(), (s, a, {completed = false, dismissed = false}) async {});
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: NexusSurveyView(controller: c))));
-    expect(find.text('How likely?'), findsOneWidget);
+  testWidgets(
+    'default view renders the question; custom builder overrides it',
+    (tester) async {
+      final c = NexusSurveyController(
+        _survey(),
+        (s, a, {completed = false, dismissed = false}) async {},
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: NexusSurveyView(controller: c)),
+        ),
+      );
+      expect(find.text('How likely?'), findsOneWidget);
 
-    final c2 = NexusSurveyController(_survey(), (s, a, {completed = false, dismissed = false}) async {});
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: NexusSurveyView(
-            controller: c2,
-            questionBuilder: (ctx, ctrl, q) => const Text('CUSTOM WIDGET'),
+      final c2 = NexusSurveyController(
+        _survey(),
+        (s, a, {completed = false, dismissed = false}) async {},
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: NexusSurveyView(
+              controller: c2,
+              questionBuilder: (ctx, ctrl, q) => const Text('CUSTOM WIDGET'),
+            ),
           ),
         ),
-      ),
-    );
-    expect(find.text('CUSTOM WIDGET'), findsOneWidget);
-  });
+      );
+      expect(find.text('CUSTOM WIDGET'), findsOneWidget);
+    },
+  );
 }

@@ -31,12 +31,11 @@ class Rrweb {
     required int width,
     required int height,
     int? timestamp,
-  }) =>
-      {
-        'type': 4,
-        'data': {'href': href, 'width': width, 'height': height},
-        'timestamp': timestamp ?? now(),
-      };
+  }) => {
+    'type': 4,
+    'data': {'href': href, 'width': width, 'height': height},
+    'timestamp': timestamp ?? now(),
+  };
 
   /// Full snapshot (type 2): `html > body > img(src)`. Sent once per recording
   /// (and again after a resize).
@@ -45,78 +44,89 @@ class Rrweb {
     required int width,
     required int height,
     int? timestamp,
-  }) =>
-      {
-        'type': 2,
-        'data': {
-          'node': {
-            'type': 0,
-            'id': docId,
+  }) => {
+    'type': 2,
+    'data': {
+      'node': {
+        'type': 0,
+        'id': docId,
+        'childNodes': [
+          {
+            'type': 1,
+            'id': docTypeId,
+            'name': 'html',
+            'publicId': '',
+            'systemId': '',
+          },
+          {
+            'type': 2,
+            'id': htmlId,
+            'tagName': 'html',
+            'attributes': <String, Object?>{},
             'childNodes': [
-              {'type': 1, 'id': docTypeId, 'name': 'html', 'publicId': '', 'systemId': ''},
               {
                 'type': 2,
-                'id': htmlId,
-                'tagName': 'html',
+                'id': headId,
+                'tagName': 'head',
                 'attributes': <String, Object?>{},
-                'childNodes': [
-                  {
-                    'type': 2,
-                    'id': headId,
-                    'tagName': 'head',
-                    'attributes': <String, Object?>{},
-                    'childNodes': <Object?>[],
-                  },
-                  {
-                    'type': 2,
-                    'id': bodyId,
-                    'tagName': 'body',
-                    'attributes': {'style': 'margin:0;padding:0;background:#000;'},
-                    'childNodes': [_imgNode(dataUri, width, height)],
-                  },
-                ],
+                'childNodes': <Object?>[],
+              },
+              {
+                'type': 2,
+                'id': bodyId,
+                'tagName': 'body',
+                'attributes': {'style': 'margin:0;padding:0;background:#000;'},
+                'childNodes': [_imgNode(dataUri, width, height)],
               },
             ],
           },
-          'initialOffset': {'left': 0, 'top': 0},
-        },
-        'timestamp': timestamp ?? now(),
-      };
+        ],
+      },
+      'initialOffset': {'left': 0, 'top': 0},
+    },
+    'timestamp': timestamp ?? now(),
+  };
 
   static Map<String, Object?> _imgNode(String dataUri, int w, int h) => {
-        'type': 2,
-        'id': imgId,
-        'tagName': 'img',
-        'attributes': {
-          'src': dataUri,
-          'width': '$w',
-          'height': '$h',
-          'style': 'display:block;width:${w}px;height:${h}px;',
-        },
-        'childNodes': <Object?>[],
-      };
+    'type': 2,
+    'id': imgId,
+    'tagName': 'img',
+    'attributes': {
+      'src': dataUri,
+      'width': '$w',
+      'height': '$h',
+      'style': 'display:block;width:${w}px;height:${h}px;',
+    },
+    'childNodes': <Object?>[],
+  };
 
   /// Incremental frame (type 3, Mutation): swap the `<img>` `src`.
-  static Map<String, Object?> frame({required String dataUri, int? timestamp}) => {
-        'type': 3,
-        'data': {
-          'source': 0,
-          'texts': <Object?>[],
-          'attributes': [
-            {
-              'id': imgId,
-              'attributes': {'src': dataUri},
-            },
-          ],
-          'removes': <Object?>[],
-          'adds': <Object?>[],
+  static Map<String, Object?> frame({
+    required String dataUri,
+    int? timestamp,
+  }) => {
+    'type': 3,
+    'data': {
+      'source': 0,
+      'texts': <Object?>[],
+      'attributes': [
+        {
+          'id': imgId,
+          'attributes': {'src': dataUri},
         },
-        'timestamp': timestamp ?? now(),
-      };
+      ],
+      'removes': <Object?>[],
+      'adds': <Object?>[],
+    },
+    'timestamp': timestamp ?? now(),
+  };
 
   /// Pointer down/up as rrweb MouseInteraction (TouchStart=7 / TouchEnd=9).
-  static Map<String, Object?> pointerDown(double x, double y, {int? timestamp}) =>
-      _interaction(7, x, y, timestamp);
+  static Map<String, Object?> pointerDown(
+    double x,
+    double y, {
+    int? timestamp,
+  }) => _interaction(7, x, y, timestamp);
   static Map<String, Object?> pointerUp(double x, double y, {int? timestamp}) =>
       _interaction(9, x, y, timestamp);
 
@@ -125,18 +135,22 @@ class Rrweb {
       _interaction(2, x, y, timestamp);
 
   /// A console line (rrweb console plugin) — surfaces in the player's Console tab.
-  static Map<String, Object?> consoleLog(String level, String message, {int? timestamp}) => {
-        'type': 6,
-        'data': {
-          'plugin': 'rrweb/console@1',
-          'payload': {
-            'level': level,
-            'trace': <Object?>[],
-            'payload': [jsonEncode(message)],
-          },
-        },
-        'timestamp': timestamp ?? now(),
-      };
+  static Map<String, Object?> consoleLog(
+    String level,
+    String message, {
+    int? timestamp,
+  }) => {
+    'type': 6,
+    'data': {
+      'plugin': 'rrweb/console@1',
+      'payload': {
+        'level': level,
+        'trace': <Object?>[],
+        'payload': [jsonEncode(message)],
+      },
+    },
+    'timestamp': timestamp ?? now(),
+  };
 
   /// A network request (rrweb network plugin) — surfaces in the Network tab.
   static Map<String, Object?> network({
@@ -147,40 +161,61 @@ class Rrweb {
     num? size,
     int? startTime,
     int? timestamp,
-  }) =>
-      {
-        'type': 6,
-        'data': {
-          'plugin': 'rrweb/network@1',
-          'payload': {
-            'requests': [
-              {
-                'url': url,
-                'method': method,
-                'status': status,
-                'duration': duration,
-                'startTime': startTime ?? (timestamp ?? now()),
-                if (size != null) 'transferSize': size,
-              },
-            ],
+  }) => {
+    'type': 6,
+    'data': {
+      'plugin': 'rrweb/network@1',
+      'payload': {
+        'requests': [
+          {
+            'url': url,
+            'method': method,
+            'status': status,
+            'duration': duration,
+            'startTime': startTime ?? (timestamp ?? now()),
+            'transferSize': ?size,
           },
-        },
-        'timestamp': timestamp ?? now(),
-      };
+        ],
+      },
+    },
+    'timestamp': timestamp ?? now(),
+  };
 
-  static Map<String, Object?> _interaction(int type, double x, double y, int? timestamp) => {
-        'type': 3,
-        'data': {'source': 2, 'type': type, 'id': bodyId, 'x': x.round(), 'y': y.round()},
-        'timestamp': timestamp ?? now(),
-      };
+  static Map<String, Object?> _interaction(
+    int type,
+    double x,
+    double y,
+    int? timestamp,
+  ) => {
+    'type': 3,
+    'data': {
+      'source': 2,
+      'type': type,
+      'id': bodyId,
+      'x': x.round(),
+      'y': y.round(),
+    },
+    'timestamp': timestamp ?? now(),
+  };
 
   /// Pointer move — a batch of positions (rrweb TouchMove, source 6).
-  static Map<String, Object?> pointerMove(List<Map<String, Object?>> positions, {int? timestamp}) => {
-        'type': 3,
-        'data': {'source': 6, 'positions': positions},
-        'timestamp': timestamp ?? now(),
-      };
+  static Map<String, Object?> pointerMove(
+    List<Map<String, Object?>> positions, {
+    int? timestamp,
+  }) => {
+    'type': 3,
+    'data': {'source': 6, 'positions': positions},
+    'timestamp': timestamp ?? now(),
+  };
 
-  static Map<String, Object?> position(double x, double y, {int timeOffset = 0}) =>
-      {'x': x.round(), 'y': y.round(), 'id': bodyId, 'timeOffset': timeOffset};
+  static Map<String, Object?> position(
+    double x,
+    double y, {
+    int timeOffset = 0,
+  }) => {
+    'x': x.round(),
+    'y': y.round(),
+    'id': bodyId,
+    'timeOffset': timeOffset,
+  };
 }

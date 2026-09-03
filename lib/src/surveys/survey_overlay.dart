@@ -7,7 +7,10 @@ import 'survey_view.dart';
 
 /// Fully replace the survey UI. You receive the [NexusSurveyController]; render
 /// whatever you want and drive it (answers, next/back, complete, dismiss, close).
-typedef NexusSurveyBuilder = Widget Function(BuildContext context, NexusSurveyController controller);
+typedef NexusSurveyBuilder = Widget Function(
+  BuildContext context,
+  NexusSurveyController controller,
+);
 
 /// Hosts the currently-active survey above your app. Add it via
 /// `MaterialApp.builder` so it has a Material/Overlay/MediaQuery ancestor:
@@ -63,7 +66,8 @@ class _NexusSurveyOverlayState extends State<NexusSurveyOverlay> {
       _controller = null;
     } else if (_controller?.survey.id != survey.id) {
       final surveys = Nexus.instance.surveys;
-      _controller = NexusSurveyController(survey, surveys.respond)..onClose = surveys.close;
+      _controller = NexusSurveyController(survey, surveys.respond)
+        ..onClose = surveys.close;
     }
     if (mounted) setState(() {});
   }
@@ -79,8 +83,12 @@ class _NexusSurveyOverlayState extends State<NexusSurveyOverlay> {
             child: SafeArea(
               child: Align(
                 alignment: _alignment(controller.survey.position),
-                child: widget.surveyBuilder?.call(context, controller) ??
-                    NexusSurveyView(controller: controller, questionBuilder: widget.questionBuilder),
+                child:
+                    widget.surveyBuilder?.call(context, controller) ??
+                    NexusSurveyView(
+                      controller: controller,
+                      questionBuilder: widget.questionBuilder,
+                    ),
               ),
             ),
           ),

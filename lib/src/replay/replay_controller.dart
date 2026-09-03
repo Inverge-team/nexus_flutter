@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -59,7 +58,9 @@ class NexusReplayController {
     _installConsoleCapture();
     _installNetworkCapture();
     _timer = Timer.periodic(_cfg.replayInterval, (_) => _tick());
-    NexusLog.info('replay recording started (frame every ${_cfg.replayInterval.inMilliseconds}ms)');
+    NexusLog.info(
+      'replay recording started (frame every ${_cfg.replayInterval.inMilliseconds}ms)',
+    );
     // First frame after the next frame is committed — by then NexusScope (added
     // in runApp, right after Nexus.init) is mounted, so we avoid a false warning.
     WidgetsBinding.instance.addPostFrameCallback((_) => _tick());
@@ -109,7 +110,15 @@ class NexusReplayController {
     int? size,
   }) {
     if (!_recording) return;
-    _emit(Rrweb.network(url: url, method: method, status: status, duration: durationMs, size: size));
+    _emit(
+      Rrweb.network(
+        url: url,
+        method: method,
+        status: status,
+        duration: durationMs,
+        size: size,
+      ),
+    );
   }
 
   void pause() => _paused = true;
@@ -144,8 +153,10 @@ class NexusReplayController {
     if (ctx == null) {
       if (!_warnedNoScope) {
         _warnedNoScope = true;
-        NexusLog.warn('replay: NexusScope not mounted — nothing to capture. '
-            'Wrap your app: runApp(NexusScope(child: MyApp())).');
+        NexusLog.warn(
+          'replay: NexusScope not mounted — nothing to capture. '
+          'Wrap your app: runApp(NexusScope(child: MyApp())).',
+        );
       }
       return;
     }
@@ -161,12 +172,17 @@ class NexusReplayController {
     // Redact masked regions (explicit NexusMask + auto text fields) before the
     // pixels are ever encoded.
     final masks = <Rect>[
-      if (!NexusMaskRegistry.instance.isEmpty) ...NexusMaskRegistry.instance.rectsIn(boundary),
+      if (!NexusMaskRegistry.instance.isEmpty)
+        ...NexusMaskRegistry.instance.rectsIn(boundary),
       if (_cfg.replayMaskTextFields) ..._textFieldRects(boundary),
     ];
-    final ui.Image finalImage = masks.isEmpty ? shot : await _redact(shot, masks, ratio);
+    final ui.Image finalImage = masks.isEmpty
+        ? shot
+        : await _redact(shot, masks, ratio);
 
-    final ByteData? png = await finalImage.toByteData(format: ui.ImageByteFormat.png);
+    final ByteData? png = await finalImage.toByteData(
+      format: ui.ImageByteFormat.png,
+    );
     if (!identical(finalImage, shot)) finalImage.dispose();
     shot.dispose();
     if (png == null) return;
@@ -184,7 +200,9 @@ class NexusReplayController {
       _sentFirst = true;
       _emit(Rrweb.meta(href: _currentHref, width: w, height: h));
       _emit(Rrweb.fullSnapshot(dataUri: dataUri, width: w, height: h));
-      NexusLog.debug('replay: first frame captured (${w}x$h, ${bytes.length ~/ 1024}KB)');
+      NexusLog.debug(
+        'replay: first frame captured (${w}x$h, ${bytes.length ~/ 1024}KB)',
+      );
     } else {
       _emit(Rrweb.frame(dataUri: dataUri));
     }
@@ -200,7 +218,9 @@ class NexusReplayController {
         try {
           final topLeft = node.localToGlobal(Offset.zero, ancestor: boundary);
           out.add(topLeft & node.size);
-        } catch (_) {/* off-tree / not laid out */}
+        } catch (_) {
+          /* off-tree / not laid out */
+        }
       }
       node.visitChildren(visit);
     }
@@ -217,7 +237,12 @@ class NexusReplayController {
     final paint = Paint()..color = const Color(0xFF1A1A1A);
     for (final r in masks) {
       canvas.drawRect(
-        Rect.fromLTWH(r.left * ratio, r.top * ratio, r.width * ratio, r.height * ratio),
+        Rect.fromLTWH(
+          r.left * ratio,
+          r.top * ratio,
+          r.width * ratio,
+          r.height * ratio,
+        ),
         paint,
       );
     }
@@ -291,15 +316,24 @@ class NexusReplayController {
     final baseHost = Uri.tryParse(_cfg.baseUrl)?.host;
     NexusNetworkCapture.install(
       isRecording: () => _recording && !_paused,
-      ignore: (url) => baseHost != null && baseHost.isNotEmpty && url.host == baseHost,
-      record: ({required url, required method, required status, required durationMs, size}) =>
-          _emit(Rrweb.network(
-        url: url,
-        method: method,
-        status: status,
-        duration: durationMs,
-        size: size,
-      )),
+      ignore: (url) =>
+          baseHost != null && baseHost.isNotEmpty && url.host == baseHost,
+      record:
+          ({
+            required url,
+            required method,
+            required status,
+            required durationMs,
+            size,
+          }) => _emit(
+            Rrweb.network(
+              url: url,
+              method: method,
+              status: status,
+              duration: durationMs,
+              size: size,
+            ),
+          ),
     );
     NexusLog.debug('replay: automatic network capture installed');
   }

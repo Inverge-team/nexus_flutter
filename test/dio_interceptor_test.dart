@@ -12,10 +12,14 @@ class _FakeAdapter implements HttpClientAdapter {
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
-    return ResponseBody.fromString('ok', 200, headers: {
-      Headers.contentTypeHeader: ['text/plain'],
-      Headers.contentLengthHeader: ['2'],
-    });
+    return ResponseBody.fromString(
+      'ok',
+      200,
+      headers: {
+        Headers.contentTypeHeader: ['text/plain'],
+        Headers.contentLengthHeader: ['2'],
+      },
+    );
   }
 
   @override
@@ -42,16 +46,19 @@ class _ErrorAdapter implements HttpClientAdapter {
 }
 
 void main() {
-  test('integrates into the Dio chain and is a safe no-op before init', () async {
-    final dio = Dio()..httpClientAdapter = _FakeAdapter();
-    dio.interceptors.add(NexusDioInterceptor());
+  test(
+    'integrates into the Dio chain and is a safe no-op before init',
+    () async {
+      final dio = Dio()..httpClientAdapter = _FakeAdapter();
+      dio.interceptors.add(NexusDioInterceptor());
 
-    final res = await dio.get<String>('https://example.com/x');
+      final res = await dio.get<String>('https://example.com/x');
 
-    expect(res.statusCode, 200);
-    // onRequest stamped a start time on the request it observed.
-    expect(res.requestOptions.extra['nexus_start_ms'], isA<int>());
-  });
+      expect(res.statusCode, 200);
+      // onRequest stamped a start time on the request it observed.
+      expect(res.requestOptions.extra['nexus_start_ms'], isA<int>());
+    },
+  );
 
   test('propagates errors through onError without swallowing them', () async {
     final dio = Dio()

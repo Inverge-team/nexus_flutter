@@ -17,7 +17,11 @@ typedef NexusQuestionBuilder = Widget Function(
 /// [questionBuilder] to override individual questions, or replace the whole card
 /// via `NexusSurveyOverlay(surveyBuilder: ...)`.
 class NexusSurveyView extends StatefulWidget {
-  const NexusSurveyView({super.key, required this.controller, this.questionBuilder});
+  const NexusSurveyView({
+    super.key,
+    required this.controller,
+    this.questionBuilder,
+  });
 
   final NexusSurveyController controller;
   final NexusQuestionBuilder? questionBuilder;
@@ -50,7 +54,8 @@ class _NexusSurveyViewState extends State<NexusSurveyView> {
     final c = widget.controller;
     final survey = c.survey;
     final theme = Theme.of(context);
-    final accent = _hexColor(survey.primaryColorHex) ?? theme.colorScheme.primary;
+    final accent =
+        _hexColor(survey.primaryColorHex) ?? theme.colorScheme.primary;
 
     if (c.isDone) {
       if (survey.showThankYou) {
@@ -77,8 +82,12 @@ class _NexusSurveyViewState extends State<NexusSurveyView> {
           Row(
             children: [
               Expanded(
-                child: Text(survey.name,
-                    style: theme.textTheme.labelSmall?.copyWith(color: theme.hintColor)),
+                child: Text(
+                  survey.name,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.hintColor,
+                  ),
+                ),
               ),
               InkWell(
                 onTap: () => c.dismiss(),
@@ -91,26 +100,47 @@ class _NexusSurveyViewState extends State<NexusSurveyView> {
               padding: const EdgeInsets.only(top: 8),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(value: c.progress, color: accent, minHeight: 4),
+                child: LinearProgressIndicator(
+                  value: c.progress,
+                  color: accent,
+                  minHeight: 4,
+                ),
               ),
             ),
           const SizedBox(height: 12),
-          Text(q.label, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+          Text(
+            q.label,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           if (q.description != null && q.description!.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 4),
-              child: Text(q.description!, style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+              child: Text(
+                q.description!,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.hintColor,
+                ),
+              ),
             ),
           const SizedBox(height: 14),
-          widget.questionBuilder?.call(context, c, q) ?? _defaultQuestion(context, c, q, accent),
+          widget.questionBuilder?.call(context, c, q) ??
+              _defaultQuestion(context, c, q, accent),
           const SizedBox(height: 14),
           Row(
             children: [
-              if (c.step > 0) TextButton(onPressed: c.back, child: const Text('Back')),
+              if (c.step > 0)
+                TextButton(onPressed: c.back, child: const Text('Back')),
               const Spacer(),
               ElevatedButton(
-                onPressed: (c.canAdvance && !c.isSubmitting) ? () => c.next() : null,
-                style: ElevatedButton.styleFrom(backgroundColor: accent, foregroundColor: Colors.white),
+                onPressed: (c.canAdvance && !c.isSubmitting)
+                    ? () => c.next()
+                    : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: accent,
+                  foregroundColor: Colors.white,
+                ),
                 child: Text(_nextLabel(c, q, survey)),
               ),
             ],
@@ -120,7 +150,11 @@ class _NexusSurveyViewState extends State<NexusSurveyView> {
     );
   }
 
-  String _nextLabel(NexusSurveyController c, NexusSurveyQuestion q, NexusSurvey survey) {
+  String _nextLabel(
+    NexusSurveyController c,
+    NexusSurveyQuestion q,
+    NexusSurvey survey,
+  ) {
     if (q.type == 'link') return q.buttonText ?? 'Continue';
     if (c.isLast) return survey.submitButtonText ?? 'Submit';
     return 'Next';
@@ -147,7 +181,11 @@ class _NexusSurveyViewState extends State<NexusSurveyView> {
         if (survey.thankYouTitle != null)
           Text(survey.thankYouTitle!, style: theme.textTheme.titleMedium),
         const SizedBox(height: 4),
-        Text(survey.thankYouMessage, textAlign: TextAlign.center, style: theme.textTheme.bodyMedium),
+        Text(
+          survey.thankYouMessage,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodyMedium,
+        ),
       ],
     );
   }
@@ -169,45 +207,79 @@ class _NexusSurveyViewState extends State<NexusSurveyView> {
           onChanged: (v) => c.setAnswer(q.id, v),
         );
       case 'single_choice':
+        // Uses RadioListTile's groupValue/onChanged (deprecated in Flutter 3.32
+        // in favour of a RadioGroup ancestor). Kept for compatibility with the
+        // package's declared minimum (`flutter: >=3.3.0`), where RadioGroup does
+        // not exist yet.
+        final selectedChoice = c.answerFor(q.id) as String?;
         return Column(
           children: q.choices
-              .map((ch) => RadioListTile<String>(
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    activeColor: accent,
-                    value: ch.value,
-                    groupValue: c.answerFor(q.id) as String?,
-                    onChanged: (v) => c.setAnswer(q.id, v),
-                    title: Text(ch.display),
-                  ))
+              .map(
+                (ch) => RadioListTile<String>(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  activeColor: accent,
+                  value: ch.value,
+                  // ignore: deprecated_member_use
+                  groupValue: selectedChoice,
+                  // ignore: deprecated_member_use
+                  onChanged: (v) => c.setAnswer(q.id, v),
+                  title: Text(ch.display),
+                ),
+              )
               .toList(),
         );
       case 'multiple_choice':
-        final selected = (c.answerFor(q.id) as List?)?.cast<String>() ?? const [];
+        final selected =
+            (c.answerFor(q.id) as List?)?.cast<String>() ?? const [];
         return Column(
           children: q.choices
-              .map((ch) => CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    activeColor: accent,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    value: selected.contains(ch.value),
-                    onChanged: (_) => c.toggleChoice(q.id, ch.value),
-                    title: Text(ch.display),
-                  ))
+              .map(
+                (ch) => CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  activeColor: accent,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  value: selected.contains(ch.value),
+                  onChanged: (_) => c.toggleChoice(q.id, ch.value),
+                  title: Text(ch.display),
+                ),
+              )
               .toList(),
         );
       case 'boolean':
         final v = c.answerFor(q.id);
         return Row(
           children: [
-            Expanded(child: _pill('Yes', v == true, accent, () => c.setAnswer(q.id, true))),
+            Expanded(
+              child: _pill(
+                'Yes',
+                v == true,
+                accent,
+                () => c.setAnswer(q.id, true),
+              ),
+            ),
             const SizedBox(width: 8),
-            Expanded(child: _pill('No', v == false, accent, () => c.setAnswer(q.id, false))),
+            Expanded(
+              child: _pill(
+                'No',
+                v == false,
+                accent,
+                () => c.setAnswer(q.id, false),
+              ),
+            ),
           ],
         );
       case 'rating':
-        return _scale(c, q, accent, q.scaleMin ?? 1, q.scaleMax ?? 5, star: q.display == 'star', emoji: q.display == 'emoji');
+        return _scale(
+          c,
+          q,
+          accent,
+          q.scaleMin ?? 1,
+          q.scaleMax ?? 5,
+          star: q.display == 'star',
+          emoji: q.display == 'emoji',
+        );
       case 'nps':
         return _scale(c, q, accent, 0, 10);
       case 'link':
@@ -243,15 +315,36 @@ class _NexusSurveyViewState extends State<NexusSurveyView> {
                   height: 36,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: current == i ? accent.withOpacity(0.15) : null,
-                    border: Border.all(color: current == i ? accent : Colors.grey.withOpacity(0.4)),
+                    color: current == i ? accent.withValues(alpha: 0.15) : null,
+                    border: Border.all(
+                      color: current == i
+                          ? accent
+                          : Colors.grey.withValues(alpha: 0.4),
+                    ),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: star
-                      ? Icon(current != null && i <= current ? Icons.star : Icons.star_border, color: accent, size: 20)
+                      ? Icon(
+                          current != null && i <= current
+                              ? Icons.star
+                              : Icons.star_border,
+                          color: accent,
+                          size: 20,
+                        )
                       : emoji
-                          ? Text(emojis[((i - min) * (emojis.length - 1) / (max - min)).round()], style: const TextStyle(fontSize: 18))
-                          : Text('$i', style: TextStyle(fontWeight: current == i ? FontWeight.bold : FontWeight.normal)),
+                      ? Text(
+                          emojis[((i - min) * (emojis.length - 1) / (max - min))
+                              .round()],
+                          style: const TextStyle(fontSize: 18),
+                        )
+                      : Text(
+                          '$i',
+                          style: TextStyle(
+                            fontWeight: current == i
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                          ),
+                        ),
                 ),
               ),
           ],
@@ -262,8 +355,14 @@ class _NexusSurveyViewState extends State<NexusSurveyView> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(q.lowerLabel ?? '', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                Text(q.upperLabel ?? '', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                Text(
+                  q.lowerLabel ?? '',
+                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+                Text(
+                  q.upperLabel ?? '',
+                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                ),
               ],
             ),
           ),
@@ -279,11 +378,18 @@ class _NexusSurveyViewState extends State<NexusSurveyView> {
         padding: const EdgeInsets.symmetric(vertical: 12),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: selected ? accent.withOpacity(0.15) : null,
-          border: Border.all(color: selected ? accent : Colors.grey.withOpacity(0.4)),
+          color: selected ? accent.withValues(alpha: 0.15) : null,
+          border: Border.all(
+            color: selected ? accent : Colors.grey.withValues(alpha: 0.4),
+          ),
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Text(label, style: TextStyle(fontWeight: selected ? FontWeight.bold : FontWeight.normal)),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
       ),
     );
   }
@@ -291,7 +397,13 @@ class _NexusSurveyViewState extends State<NexusSurveyView> {
 
 /// Text input that owns its editing state (so rebuilds don't drop focus).
 class _TextAnswer extends StatefulWidget {
-  const _TextAnswer({super.key, this.initial, required this.hint, required this.multiline, required this.onChanged});
+  const _TextAnswer({
+    super.key,
+    this.initial,
+    required this.hint,
+    required this.multiline,
+    required this.onChanged,
+  });
   final String? initial;
   final String hint;
   final bool multiline;
@@ -302,7 +414,9 @@ class _TextAnswer extends StatefulWidget {
 }
 
 class _TextAnswerState extends State<_TextAnswer> {
-  late final TextEditingController _controller = TextEditingController(text: widget.initial ?? '');
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initial ?? '',
+  );
 
   @override
   void dispose() {
@@ -317,7 +431,9 @@ class _TextAnswerState extends State<_TextAnswer> {
       onChanged: widget.onChanged,
       minLines: widget.multiline ? 2 : 1,
       maxLines: widget.multiline ? 4 : 1,
-      keyboardType: widget.multiline ? TextInputType.multiline : TextInputType.text,
+      keyboardType: widget.multiline
+          ? TextInputType.multiline
+          : TextInputType.text,
       decoration: InputDecoration(
         hintText: widget.hint,
         border: const OutlineInputBorder(),

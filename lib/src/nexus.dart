@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../nexus_platform_interface.dart';
@@ -11,6 +10,7 @@ import 'identity.dart';
 import 'lifecycle.dart';
 import 'logging.dart';
 import 'outbox.dart';
+import 'platform/app_package_info.dart';
 import 'services/errors_service.dart';
 import 'services/events_service.dart';
 import 'services/flags_service.dart';
@@ -144,13 +144,19 @@ class Nexus {
     if (config.remoteConfigEnabled) {
       unawaited(remoteConfig.fetch());
     }
-    if (config.remoteConfigRealtime && (config.autoConnectRealtime || realtime.isConnected)) {
+    if (config.remoteConfigRealtime &&
+        (config.autoConnectRealtime || realtime.isConnected)) {
       unawaited(remoteConfig.subscribeRealtime(realtime));
     }
 
     // Foreground/background hooks — keeps connection-minutes accurate.
-    _lifecycle = NexusLifecycle(onBackground: _onBackground, onForeground: _onForeground);
-    NexusLog.info('ready (${config.autoTrackSessions ? 'session tracking on' : 'session tracking off'})');
+    _lifecycle = NexusLifecycle(
+      onBackground: _onBackground,
+      onForeground: _onForeground,
+    );
+    NexusLog.info(
+      'ready (${config.autoTrackSessions ? 'session tracking on' : 'session tracking off'})',
+    );
   }
 
   Future<void> _onBackground() async {
@@ -197,7 +203,9 @@ class Nexus {
       } else {
         await prefs.setString('nexus_device_key', _identity.deviceKey);
       }
-    } catch (_) {/* fall back to the per-launch key */}
+    } catch (_) {
+      /* fall back to the per-launch key */
+    }
   }
 
   /// Auto-detect app metadata (name/package/version/build/installer) and, from
@@ -205,28 +213,28 @@ class Nexus {
   Future<void> _loadAppInfo() async {
     final app = <String, Object?>{};
     try {
-      final pkg = await PackageInfo.fromPlatform();
-      app.addAll({
-        'appName': pkg.appName,
-        'packageName': pkg.packageName,
-        'version': pkg.version,
-        'buildNumber': pkg.buildNumber,
-        'installerStore': pkg.installerStore,
-      });
-    } catch (_) {/* unavailable in tests / some platforms */}
+      app.addAll(await loadPackageInfo());
+    } catch (_) {
+      /* unavailable in tests / some platforms (or web/WASM) */
+    }
 
     // Native install/update time + installer (Android exact; iOS best-effort).
     for (final k in ['installTime', 'updateTime', 'installerStore']) {
       final v = _identity.deviceContext[k];
       if (v != null) app[k] = v;
-      _identity.deviceContext.remove(k); // keep these under `app`, not top-level
+      _identity.deviceContext.remove(
+        k,
+      ); // keep these under `app`, not top-level
     }
     app.removeWhere((_, v) => v == null || (v is String && v.isEmpty));
 
     final version = app['version'] as String?;
     final build = app['buildNumber'] as String?;
-    final release = config.appVersion ??
-        (version != null ? (build != null && build.isNotEmpty ? '$version+$build' : version) : null);
+    final release =
+        config.appVersion ??
+        (version != null
+            ? (build != null && build.isNotEmpty ? '$version+$build' : version)
+            : null);
     if (release != null) {
       _identity.deviceContext['appVersion'] = release;
       app['release'] = release;

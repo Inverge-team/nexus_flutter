@@ -19,7 +19,10 @@ void main() {
       calls++;
       return calls <= 2 ? http.Response('', 503) : http.Response('{}', 202);
     });
-    final outbox = NexusOutbox(NexusHttp(cfg, NexusIdentity(), client: client), cfg);
+    final outbox = NexusOutbox(
+      NexusHttp(cfg, NexusIdentity(), client: client),
+      cfg,
+    );
     await outbox.init();
 
     outbox.enqueue('/partner/events', {'events': <Object?>[]});
@@ -35,7 +38,10 @@ void main() {
   test('persists across restarts while offline', () async {
     // Always offline.
     final offline = MockClient((_) async => http.Response('', 503));
-    final a = NexusOutbox(NexusHttp(cfg, NexusIdentity(), client: offline), cfg);
+    final a = NexusOutbox(
+      NexusHttp(cfg, NexusIdentity(), client: offline),
+      cfg,
+    );
     await a.init();
     a.enqueue('/partner/errors', {'message': 'boom'});
     await Future<void>.delayed(const Duration(milliseconds: 20));
@@ -56,7 +62,11 @@ void main() {
 
   test('drops a poison item after maxAttempts', () async {
     final client = MockClient((_) async => http.Response('bad', 400));
-    final outbox = NexusOutbox(NexusHttp(cfg, NexusIdentity(), client: client), cfg, maxAttempts: 3);
+    final outbox = NexusOutbox(
+      NexusHttp(cfg, NexusIdentity(), client: client),
+      cfg,
+      maxAttempts: 3,
+    );
     await outbox.init();
     outbox.enqueue('/partner/events', {'events': <Object?>[]});
     for (var i = 0; i < 5; i++) {

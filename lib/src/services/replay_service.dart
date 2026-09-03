@@ -98,14 +98,13 @@ class NexusReplay {
     required int status,
     required int durationMs,
     int? size,
-  }) =>
-      _controller.recordNetwork(
-        url: url,
-        method: method,
-        status: status,
-        durationMs: durationMs,
-        size: size,
-      );
+  }) => _controller.recordNetwork(
+    url: url,
+    method: method,
+    status: status,
+    durationMs: durationMs,
+    size: size,
+  );
 
   Future<void> flush() => _queue.flush();
 
@@ -144,8 +143,9 @@ class NexusReplay {
 
   static String _randomHex() {
     final r = Random.secure();
-    return List<int>.generate(8, (_) => r.nextInt(256))
-        .map((b) => b.toRadixString(16).padLeft(2, '0'))
-        .join();
+    return List<int>.generate(
+      8,
+      (_) => r.nextInt(256),
+    ).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 }

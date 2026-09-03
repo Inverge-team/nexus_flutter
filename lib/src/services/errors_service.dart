@@ -56,7 +56,7 @@ class NexusErrors {
         // appName, packageName, version, buildNumber, installerStore,
         // installTime, updateTime, release.
         if (_id.appInfo.isNotEmpty) 'app': _id.appInfo,
-        if (context != null) ...context,
+        ...?context,
       },
       'release': _id.appInfo['release'] ?? _cfg.appVersion,
       if (_id.distinctId != null) 'distinctId': _id.distinctId,
@@ -92,7 +92,13 @@ class NexusErrors {
 
   // Symbolication-ready metadata the native reporters attach (for dSYM /
   // ndk-stack resolution on the backend).
-  static const _symbolicationKeys = ['binaryImages', 'maps', 'arch', 'fault', 'platform'];
+  static const _symbolicationKeys = [
+    'binaryImages',
+    'maps',
+    'arch',
+    'fault',
+    'platform',
+  ];
 
   Future<void> _drainNativeCrashes() async {
     final pending = await NexusPlatform.instance.takePendingCrashes();

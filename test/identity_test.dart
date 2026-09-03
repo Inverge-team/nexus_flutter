@@ -9,7 +9,8 @@ void main() {
         'osType': 'android',
         'osVersion': '14',
         'appVersion': '1.2.3+45',
-        'deviceModel': 'Samsung SM-A256E', // must NOT be sent — the strict API 400s on it
+        'deviceModel':
+            'Samsung SM-A256E', // must NOT be sent — the strict API 400s on it
         'installTime': 1700000000000,
       };
 

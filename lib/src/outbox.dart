@@ -9,7 +9,13 @@ import 'http_client.dart';
 import 'logging.dart';
 
 class _OutboxItem {
-  _OutboxItem({required this.id, required this.path, required this.body, this.attempts = 0, required this.createdAt});
+  _OutboxItem({
+    required this.id,
+    required this.path,
+    required this.body,
+    this.attempts = 0,
+    required this.createdAt,
+  });
 
   final String id;
   final String path;
@@ -17,15 +23,21 @@ class _OutboxItem {
   int attempts;
   final int createdAt;
 
-  Map<String, Object?> toJson() => {'id': id, 'path': path, 'body': body, 'attempts': attempts, 'createdAt': createdAt};
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'path': path,
+    'body': body,
+    'attempts': attempts,
+    'createdAt': createdAt,
+  };
 
   static _OutboxItem fromJson(Map<String, dynamic> j) => _OutboxItem(
-        id: j['id'] as String,
-        path: j['path'] as String,
-        body: Map<String, Object?>.from(j['body'] as Map),
-        attempts: (j['attempts'] as num?)?.toInt() ?? 0,
-        createdAt: (j['createdAt'] as num?)?.toInt() ?? 0,
-      );
+    id: j['id'] as String,
+    path: j['path'] as String,
+    body: Map<String, Object?>.from(j['body'] as Map),
+    attempts: (j['attempts'] as num?)?.toInt() ?? 0,
+    createdAt: (j['createdAt'] as num?)?.toInt() ?? 0,
+  );
 }
 
 /// A durable, at-least-once outbox for fire-and-forget telemetry. Requests are
@@ -33,8 +45,13 @@ class _OutboxItem {
 /// retried with exponential backoff. Delivery stops on the first failure (likely
 /// offline) and resumes later; individual items are dropped after [maxAttempts].
 class NexusOutbox {
-  NexusOutbox(this._http, NexusConfig config, {this.maxItems = 500, this.maxAttempts = 8, this.retryInterval = const Duration(seconds: 30)})
-      : assert(config.maxBatch > 0);
+  NexusOutbox(
+    this._http,
+    NexusConfig config, {
+    this.maxItems = 500,
+    this.maxAttempts = 8,
+    this.retryInterval = const Duration(seconds: 30),
+  }) : assert(config.maxBatch > 0);
 
   final NexusHttp _http;
   final int maxItems;
@@ -59,16 +76,27 @@ class NexusOutbox {
       final raw = _prefs?.getString(_storageKey);
       if (raw != null) {
         final list = jsonDecode(raw) as List;
-        _items.addAll(list.map((e) => _OutboxItem.fromJson(e as Map<String, dynamic>)));
+        _items.addAll(
+          list.map((e) => _OutboxItem.fromJson(e as Map<String, dynamic>)),
+        );
       }
-    } catch (_) {/* start empty on any corruption */}
+    } catch (_) {
+      /* start empty on any corruption */
+    }
     _retryTimer = Timer.periodic(retryInterval, (_) => drain());
     if (_items.isNotEmpty) unawaited(drain());
   }
 
   /// Enqueue a telemetry request for durable, retried delivery.
   void enqueue(String path, Map<String, Object?> body) {
-    _items.add(_OutboxItem(id: _genId(), path: path, body: body, createdAt: DateTime.now().millisecondsSinceEpoch));
+    _items.add(
+      _OutboxItem(
+        id: _genId(),
+        path: path,
+        body: body,
+        createdAt: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
     while (_items.length > maxItems) {
       _items.removeAt(0); // drop oldest under sustained offline pressure
     }
@@ -91,7 +119,9 @@ class NexusOutbox {
           item.attempts++;
           if (item.attempts >= maxAttempts) {
             _items.remove(item); // give up on a poison item
-            NexusLog.warn('outbox dropped ${item.path} after $maxAttempts attempts ($pending pending)');
+            NexusLog.warn(
+              'outbox dropped ${item.path} after $maxAttempts attempts ($pending pending)',
+            );
           } else {
             failed = true;
             break; // likely offline — stop and back off
@@ -102,7 +132,10 @@ class NexusOutbox {
       if (failed) {
         _backoff = min(_backoff + 1, 6);
         _backoffTimer?.cancel();
-        _backoffTimer = Timer(Duration(seconds: 1 << _backoff), () => drain()); // 2,4,…,64s
+        _backoffTimer = Timer(
+          Duration(seconds: 1 << _backoff),
+          () => drain(),
+        ); // 2,4,…,64s
       } else {
         _backoff = 0;
       }
@@ -119,8 +152,13 @@ class NexusOutbox {
 
   void _persist() {
     try {
-      _prefs?.setString(_storageKey, jsonEncode(_items.map((e) => e.toJson()).toList()));
-    } catch (_) {/* non-fatal */}
+      _prefs?.setString(
+        _storageKey,
+        jsonEncode(_items.map((e) => e.toJson()).toList()),
+      );
+    } catch (_) {
+      /* non-fatal */
+    }
   }
 
   static String _genId() {

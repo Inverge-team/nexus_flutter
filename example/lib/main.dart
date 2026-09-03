@@ -5,11 +5,13 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialise once, at startup — like the WebSocket SDK.
-  await Nexus.init(const NexusConfig(
-    apiKey: 'nxs_your_api_key',
-    baseUrl: 'https://nexus.inverge.net',
-    logging: true,
-  ));
+  await Nexus.init(
+    const NexusConfig(
+      apiKey: 'nxs_your_api_key',
+      baseUrl: 'https://nexus.inverge.net',
+      logging: true,
+    ),
+  );
 
   // Optionally identify the end-user; everything after is correlated to them.
   await Nexus.instance.identify('user_123', email: 'alice@shopper.com');
@@ -25,7 +27,10 @@ class DemoApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Nexus SDK demo',
-      theme: ThemeData(colorSchemeSeed: const Color(0xFF0D7D82), useMaterial3: true),
+      theme: ThemeData(
+        colorSchemeSeed: const Color(0xFF0D7D82),
+        useMaterial3: true,
+      ),
       home: const HomePage(),
     );
   }
@@ -46,7 +51,10 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     // Access services via context after the first frame.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.nexus.events.track('screen_viewed', properties: {'screen': 'home'});
+      context.nexus.events.track(
+        'screen_viewed',
+        properties: {'screen': 'home'},
+      );
       context.nexus.logs.info('home screen opened', source: 'ui');
     });
   }
@@ -74,7 +82,10 @@ class _HomePageState extends State<HomePage> {
             FilledButton(
               onPressed: () async {
                 await nexus.flags.load();
-                setState(() => _status = 'new-checkout = ${nexus.flags.isEnabled('new-checkout')}');
+                setState(
+                  () => _status =
+                      'new-checkout = ${nexus.flags.isEnabled('new-checkout')}',
+                );
               },
               child: const Text('flags · evaluate'),
             ),
@@ -82,8 +93,13 @@ class _HomePageState extends State<HomePage> {
               onPressed: () {
                 nexus.realtime.connect();
                 nexus.realtime.join('orders:42');
-                nexus.realtime.on('order.updated', (data) => debugPrint('rt: $data'));
-                setState(() => _status = 'Realtime connected + joined orders:42');
+                nexus.realtime.on(
+                  'order.updated',
+                  (data) => debugPrint('rt: $data'),
+                );
+                setState(
+                  () => _status = 'Realtime connected + joined orders:42',
+                );
               },
               child: const Text('realtime · join'),
             ),

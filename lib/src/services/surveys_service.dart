@@ -35,7 +35,8 @@ class NexusSurveys {
         if (_id.distinctId != null) 'distinctId': _id.distinctId,
         'deviceKey': _id.deviceKey,
         if (props.isNotEmpty) 'properties': props,
-        if (_id.deviceContext['osType'] != null) 'osType': _id.deviceContext['osType'],
+        if (_id.deviceContext['osType'] != null)
+          'osType': _id.deviceContext['osType'],
       });
       final list = (res?['surveys'] as List?) ?? const [];
       _active = list.map(NexusSurvey.fromJson).toList();
@@ -60,7 +61,9 @@ class NexusSurveys {
       if (s.type != 'popover' && s.type != 'banner') continue;
       final events = s.trigger?.events ?? const [];
       if (events.isEmpty) {
-        if (triggeredEvent != null) continue; // untriggered surveys show on fetch
+        if (triggeredEvent != null) {
+          continue; // untriggered surveys show on fetch
+        }
         _present(s);
         return;
       }
@@ -100,7 +103,8 @@ class NexusSurveys {
     await _http.post('/partner/surveys/responses', {
       'surveyId': survey.id,
       'answers': answers,
-      if (survey.resumeResponseId != null) 'responseId': survey.resumeResponseId,
+      if (survey.resumeResponseId != null)
+        'responseId': survey.resumeResponseId,
       if (completed) 'completed': true,
       if (dismissed) 'dismissed': true,
       if (survey.iterationKey != null) 'iterationKey': survey.iterationKey,

@@ -10,7 +10,7 @@ import 'logging.dart';
 /// API key + client-OS headers; never throws into the caller's hot path.
 class NexusHttp {
   NexusHttp(this._config, this._identity, {http.Client? client})
-      : _client = client ?? http.Client();
+    : _client = client ?? http.Client();
 
   final NexusConfig _config;
   final NexusIdentity _identity;
@@ -41,7 +41,11 @@ class NexusHttp {
     NexusLog.debug('→ POST $path');
     try {
       final res = await _client
-          .post(uri, headers: {..._headers, ...?extraHeaders}, body: jsonEncode(body))
+          .post(
+            uri,
+            headers: {..._headers, ...?extraHeaders},
+            body: jsonEncode(body),
+          )
           .timeout(const Duration(seconds: 20));
       final ms = sw.elapsedMilliseconds;
       if (res.statusCode >= 200 && res.statusCode < 300) {
@@ -50,10 +54,16 @@ class NexusHttp {
         final decoded = jsonDecode(res.body);
         return decoded is Map<String, dynamic> ? decoded : {'data': decoded};
       }
-      NexusLog.warn('← ${res.statusCode} POST $path (${ms}ms) — ${_summarize(res.body)}');
+      NexusLog.warn(
+        '← ${res.statusCode} POST $path (${ms}ms) — ${_summarize(res.body)}',
+      );
       return null;
     } catch (e, st) {
-      NexusLog.error('POST $path failed after ${sw.elapsedMilliseconds}ms', e, st);
+      NexusLog.error(
+        'POST $path failed after ${sw.elapsedMilliseconds}ms',
+        e,
+        st,
+      );
       return null;
     }
   }

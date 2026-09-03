@@ -45,7 +45,9 @@ class NexusLog {
       level != NexusLogLevel.none && level.index >= l.index;
 
   static void error(String message, [Object? error, StackTrace? stackTrace]) {
-    if (_enabled(NexusLogLevel.error)) _emit(NexusLogLevel.error, message, error, stackTrace);
+    if (_enabled(NexusLogLevel.error)) {
+      _emit(NexusLogLevel.error, message, error, stackTrace);
+    }
   }
 
   static void warn(String message) {
@@ -60,14 +62,24 @@ class NexusLog {
     if (_enabled(NexusLogLevel.debug)) _emit(NexusLogLevel.debug, message);
   }
 
-  static void _emit(NexusLogLevel l, String message, [Object? error, StackTrace? stackTrace]) {
+  static void _emit(
+    NexusLogLevel l,
+    String message, [
+    Object? error,
+    StackTrace? stackTrace,
+  ]) {
     final s = sink;
     if (s != null) {
       try {
         s(l, message, error, stackTrace);
-      } catch (_) {/* a broken sink must never break the app */}
+      } catch (_) {
+        /* a broken sink must never break the app */
+      }
     }
-    final ts = DateTime.now().toIso8601String().split('T').last; // HH:mm:ss.SSSZ
+    final ts = DateTime.now()
+        .toIso8601String()
+        .split('T')
+        .last; // HH:mm:ss.SSSZ
     debugPrint('$_prefix ${ts.substring(0, 12)} ${_label(l)} $message');
     if (error != null) debugPrint('$_prefix            ↳ $error');
     if (stackTrace != null && l == NexusLogLevel.error) {

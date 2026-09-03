@@ -34,47 +34,68 @@ void main() {
     client.close();
   }
 
-  test('captures a dart:io request (covers http + dio) via HttpOverrides', () async {
-    final records = <Map<String, Object?>>[];
-    NexusNetworkCapture.install(
-      isRecording: () => true,
-      ignore: (_) => false,
-      record: ({required url, required method, required status, required durationMs, size}) =>
-          records.add({'url': url, 'method': method, 'status': status}),
-    );
-    expect(NexusNetworkCapture.isActive, isTrue);
+  test(
+    'captures a dart:io request (covers http + dio) via HttpOverrides',
+    () async {
+      final records = <Map<String, Object?>>[];
+      NexusNetworkCapture.install(
+        isRecording: () => true,
+        ignore: (_) => false,
+        record: ({
+          required url,
+          required method,
+          required status,
+          required durationMs,
+          size,
+        }) => records.add({'url': url, 'method': method, 'status': status}),
+      );
+      expect(NexusNetworkCapture.isActive, isTrue);
 
-    await hit('/thing');
+      await hit('/thing');
 
-    expect(records.length, 1);
-    expect(records.first['method'], 'GET');
-    expect(records.first['status'], 200);
-    expect((records.first['url'] as String).contains('/thing'), isTrue);
-  });
+      expect(records.length, 1);
+      expect(records.first['method'], 'GET');
+      expect(records.first['status'], 200);
+      expect((records.first['url'] as String).contains('/thing'), isTrue);
+    },
+  );
 
-  test('ignore predicate excludes matching requests (e.g. the Nexus API)', () async {
-    final records = <Map<String, Object?>>[];
-    NexusNetworkCapture.install(
-      isRecording: () => true,
-      ignore: (url) => url.path.startsWith('/partner'),
-      record: ({required url, required method, required status, required durationMs, size}) =>
-          records.add({'url': url}),
-    );
+  test(
+    'ignore predicate excludes matching requests (e.g. the Nexus API)',
+    () async {
+      final records = <Map<String, Object?>>[];
+      NexusNetworkCapture.install(
+        isRecording: () => true,
+        ignore: (url) => url.path.startsWith('/partner'),
+        record: ({
+          required url,
+          required method,
+          required status,
+          required durationMs,
+          size,
+        }) => records.add({'url': url}),
+      );
 
-    await hit('/partner/replay');
-    await hit('/app/data');
+      await hit('/partner/replay');
+      await hit('/app/data');
 
-    expect(records.length, 1);
-    expect((records.first['url'] as String).contains('/app/data'), isTrue);
-  });
+      expect(records.length, 1);
+      expect((records.first['url'] as String).contains('/app/data'), isTrue);
+    },
+  );
 
   test('records nothing while not recording', () async {
     final records = <Map<String, Object?>>[];
     NexusNetworkCapture.install(
       isRecording: () => false,
       ignore: (_) => false,
-      record: ({required url, required method, required status, required durationMs, size}) =>
-          records.add({'url': url}),
+      record: ({
+        required url,
+        required method,
+        required status,
+        required durationMs,
+        size,
+      }) => records.add({'url': url}),
     );
 
     await hit('/thing');
@@ -86,7 +107,13 @@ void main() {
     NexusNetworkCapture.install(
       isRecording: () => true,
       ignore: (_) => false,
-      record: ({required url, required method, required status, required durationMs, size}) {},
+      record: ({
+        required url,
+        required method,
+        required status,
+        required durationMs,
+        size,
+      }) {},
     );
     expect(NexusNetworkCapture.isActive, isTrue);
     NexusNetworkCapture.uninstall();

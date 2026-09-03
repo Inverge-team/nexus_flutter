@@ -49,13 +49,15 @@ class NexusRemoteConfig {
 
   /// Set in-app fallback values (used until the server provides a value).
   /// Merges with any existing defaults. Mirrors Firebase `setDefaults`.
-  void setDefaults(Map<String, Object?> defaults) => _defaults = {..._defaults, ...defaults};
+  void setDefaults(Map<String, Object?> defaults) =>
+      _defaults = {..._defaults, ...defaults};
 
   /// Custom targeting attributes sent with every fetch (e.g. `governorate`,
   /// `plan`, `segment`). These feed "Custom attribute" conditions on the server.
   /// Merges with existing attributes; call [clearAttributes] to reset. Mirrors
   /// Firebase custom signals. Values must be string/number/bool.
-  void setAttributes(Map<String, Object?> attributes) => _attributes.addAll(attributes);
+  void setAttributes(Map<String, Object?> attributes) =>
+      _attributes.addAll(attributes);
 
   /// Set (or replace) a single custom targeting attribute. Pass `null` to remove.
   void setAttribute(String key, Object? value) {
@@ -83,7 +85,10 @@ class NexusRemoteConfig {
     if (res == null) return false; // request failed — keep current values
 
     // Un-enveloped partner response; `data` fallback for safety.
-    final body = (res['parameters'] != null || res['notModified'] != null || res['throttled'] != null)
+    final body =
+        (res['parameters'] != null ||
+            res['notModified'] != null ||
+            res['throttled'] != null)
         ? res
         : (res['data'] as Map<String, dynamic>? ?? res);
 
@@ -103,7 +108,9 @@ class NexusRemoteConfig {
     _etag = body['etag'] as String? ?? _etag;
     _version = (body['version'] as num?)?.toInt() ?? _version;
     _lastFetch = DateTime.now();
-    NexusLog.debug('remote-config: fetched v$_version (${_values.length} params)');
+    NexusLog.debug(
+      'remote-config: fetched v$_version (${_values.length} params)',
+    );
     if (!_changes.isClosed) _changes.add(null);
     return true;
   }
@@ -111,7 +118,8 @@ class NexusRemoteConfig {
   // --- typed getters ------------------------------------------------------
 
   /// The raw value for [key] (server value, else in-app default, else null).
-  Object? getValue(String key) => _values.containsKey(key) ? _values[key] : _defaults[key];
+  Object? getValue(String key) =>
+      _values.containsKey(key) ? _values[key] : _defaults[key];
 
   String getString(String key, [String fallback = '']) {
     final v = getValue(key);
@@ -186,7 +194,8 @@ class NexusRemoteConfig {
       'appInstanceId': _id.deviceKey,
       if ((_cfg.appVersion ?? dc['appVersion']) != null)
         'appVersion': _cfg.appVersion ?? dc['appVersion'],
-      if (dc['osType'] is String) 'platform': (dc['osType'] as String).toLowerCase(),
+      if (dc['osType'] is String)
+        'platform': (dc['osType'] as String).toLowerCase(),
       if (dc['osVersion'] is String) 'osVersion': dc['osVersion'],
       ..._locale(),
       // Custom attributes feed "Custom attribute" conditions. Later entries win:
@@ -205,7 +214,8 @@ class NexusRemoteConfig {
       final l = ui.PlatformDispatcher.instance.locale;
       return {
         'language': l.languageCode,
-        if (l.countryCode != null && l.countryCode!.isNotEmpty) 'country': l.countryCode,
+        if (l.countryCode != null && l.countryCode!.isNotEmpty)
+          'country': l.countryCode,
       };
     } catch (_) {
       return const {};

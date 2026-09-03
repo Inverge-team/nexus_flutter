@@ -29,7 +29,12 @@ class NexusNetworkCapture {
   }) {
     if (_active) return;
     _previous = HttpOverrides.current;
-    HttpOverrides.global = _NexusHttpOverrides(_previous, isRecording, ignore, record);
+    HttpOverrides.global = _NexusHttpOverrides(
+      _previous,
+      isRecording,
+      ignore,
+      record,
+    );
     _active = true;
   }
 
@@ -42,7 +47,12 @@ class NexusNetworkCapture {
 }
 
 class _NexusHttpOverrides extends HttpOverrides {
-  _NexusHttpOverrides(this._previous, this._isRecording, this._ignore, this._record);
+  _NexusHttpOverrides(
+    this._previous,
+    this._isRecording,
+    this._ignore,
+    this._record,
+  );
 
   final HttpOverrides? _previous;
   final bool Function() _isRecording;
@@ -51,7 +61,8 @@ class _NexusHttpOverrides extends HttpOverrides {
 
   @override
   HttpClient createHttpClient(SecurityContext? context) {
-    final inner = _previous?.createHttpClient(context) ?? super.createHttpClient(context);
+    final inner =
+        _previous?.createHttpClient(context) ?? super.createHttpClient(context);
     return _ObservingHttpClient(inner, _isRecording, _ignore, _record);
   }
 
@@ -65,7 +76,12 @@ class _NexusHttpOverrides extends HttpOverrides {
 /// Delegates everything to [_inner]; wraps request creation so `close()` can time
 /// the round trip. All open/get/post/… paths funnel through [openUrl].
 class _ObservingHttpClient implements HttpClient {
-  _ObservingHttpClient(this._inner, this._isRecording, this._ignore, this._record);
+  _ObservingHttpClient(
+    this._inner,
+    this._isRecording,
+    this._ignore,
+    this._record,
+  );
 
   final HttpClient _inner;
   final bool Function() _isRecording;
@@ -83,31 +99,41 @@ class _ObservingHttpClient implements HttpClient {
   }
 
   @override
-  Future<HttpClientRequest> open(String method, String host, int port, String path) =>
-      openUrl(method, Uri(scheme: 'http', host: host, port: port, path: path));
+  Future<HttpClientRequest> open(
+    String method,
+    String host,
+    int port,
+    String path,
+  ) => openUrl(method, Uri(scheme: 'http', host: host, port: port, path: path));
 
   @override
-  Future<HttpClientRequest> get(String host, int port, String path) => open('GET', host, port, path);
+  Future<HttpClientRequest> get(String host, int port, String path) =>
+      open('GET', host, port, path);
   @override
   Future<HttpClientRequest> getUrl(Uri url) => openUrl('GET', url);
   @override
-  Future<HttpClientRequest> post(String host, int port, String path) => open('POST', host, port, path);
+  Future<HttpClientRequest> post(String host, int port, String path) =>
+      open('POST', host, port, path);
   @override
   Future<HttpClientRequest> postUrl(Uri url) => openUrl('POST', url);
   @override
-  Future<HttpClientRequest> put(String host, int port, String path) => open('PUT', host, port, path);
+  Future<HttpClientRequest> put(String host, int port, String path) =>
+      open('PUT', host, port, path);
   @override
   Future<HttpClientRequest> putUrl(Uri url) => openUrl('PUT', url);
   @override
-  Future<HttpClientRequest> delete(String host, int port, String path) => open('DELETE', host, port, path);
+  Future<HttpClientRequest> delete(String host, int port, String path) =>
+      open('DELETE', host, port, path);
   @override
   Future<HttpClientRequest> deleteUrl(Uri url) => openUrl('DELETE', url);
   @override
-  Future<HttpClientRequest> patch(String host, int port, String path) => open('PATCH', host, port, path);
+  Future<HttpClientRequest> patch(String host, int port, String path) =>
+      open('PATCH', host, port, path);
   @override
   Future<HttpClientRequest> patchUrl(Uri url) => openUrl('PATCH', url);
   @override
-  Future<HttpClientRequest> head(String host, int port, String path) => open('HEAD', host, port, path);
+  Future<HttpClientRequest> head(String host, int port, String path) =>
+      open('HEAD', host, port, path);
   @override
   Future<HttpClientRequest> headUrl(Uri url) => openUrl('HEAD', url);
 
@@ -139,30 +165,45 @@ class _ObservingHttpClient implements HttpClient {
   set userAgent(String? value) => _inner.userAgent = value;
 
   @override
-  set authenticate(Future<bool> Function(Uri url, String scheme, String? realm)? f) =>
-      _inner.authenticate = f;
+  set authenticate(
+    Future<bool> Function(Uri url, String scheme, String? realm)? f,
+  ) => _inner.authenticate = f;
   @override
   set authenticateProxy(
-          Future<bool> Function(String host, int port, String scheme, String? realm)? f) =>
-      _inner.authenticateProxy = f;
+    Future<bool> Function(String host, int port, String scheme, String? realm)?
+    f,
+  ) => _inner.authenticateProxy = f;
   @override
-  set badCertificateCallback(bool Function(X509Certificate cert, String host, int port)? cb) =>
-      _inner.badCertificateCallback = cb;
+  set badCertificateCallback(
+    bool Function(X509Certificate cert, String host, int port)? cb,
+  ) => _inner.badCertificateCallback = cb;
   @override
   set connectionFactory(
-          Future<ConnectionTask<Socket>> Function(Uri url, String? proxyHost, int? proxyPort)? f) =>
-      _inner.connectionFactory = f;
+    Future<ConnectionTask<Socket>> Function(
+      Uri url,
+      String? proxyHost,
+      int? proxyPort,
+    )?
+    f,
+  ) => _inner.connectionFactory = f;
   @override
   set findProxy(String Function(Uri url)? f) => _inner.findProxy = f;
   @override
   set keyLog(Function(String line)? callback) => _inner.keyLog = callback;
 
   @override
-  void addCredentials(Uri url, String realm, HttpClientCredentials credentials) =>
-      _inner.addCredentials(url, realm, credentials);
+  void addCredentials(
+    Uri url,
+    String realm,
+    HttpClientCredentials credentials,
+  ) => _inner.addCredentials(url, realm, credentials);
   @override
-  void addProxyCredentials(String host, int port, String realm, HttpClientCredentials credentials) =>
-      _inner.addProxyCredentials(host, port, realm, credentials);
+  void addProxyCredentials(
+    String host,
+    int port,
+    String realm,
+    HttpClientCredentials credentials,
+  ) => _inner.addProxyCredentials(host, port, realm, credentials);
 
   @override
   void close({bool force = false}) => _inner.close(force: force);
@@ -249,7 +290,8 @@ class _ObservingHttpClientRequest implements HttpClientRequest {
   @override
   void add(List<int> data) => _inner.add(data);
   @override
-  void addError(Object error, [StackTrace? stackTrace]) => _inner.addError(error, stackTrace);
+  void addError(Object error, [StackTrace? stackTrace]) =>
+      _inner.addError(error, stackTrace);
   @override
   Future<void> addStream(Stream<List<int>> stream) => _inner.addStream(stream);
   @override
@@ -264,5 +306,6 @@ class _ObservingHttpClientRequest implements HttpClientRequest {
   @override
   void writeln([Object? object = '']) => _inner.writeln(object);
   @override
-  void abort([Object? exception, StackTrace? stackTrace]) => _inner.abort(exception, stackTrace);
+  void abort([Object? exception, StackTrace? stackTrace]) =>
+      _inner.abort(exception, stackTrace);
 }

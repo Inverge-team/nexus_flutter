@@ -44,8 +44,9 @@ class NexusRealtime {
       NexusLog.info('realtime connected (${socket.id})');
       for (final r in _rooms) {
         NexusLog.debug('realtime re-joining "$r" after (re)connect');
-        socket.emitWithAck('room.join', {'room': r},
-            ack: (dynamic res) => NexusLog.debug('realtime join "$r" ← $res'));
+        socket.emitWithAck('room.join', {
+          'room': r,
+        }, ack: (dynamic res) => NexusLog.debug('realtime join "$r" ← $res'));
       }
     });
     socket.onDisconnect((_) => NexusLog.info('realtime disconnected'));
@@ -75,36 +76,45 @@ class NexusRealtime {
   Future<dynamic> emit(String room, dynamic event, [Object? payload]) {
     final events = event is List ? event : [event];
     NexusLog.debug('realtime emit $events → "$room"');
-    return _ackEmit(
-      'room.emit',
-      {'room': room, 'events': events, 'payload': payload},
-      label: 'emit $events → "$room"',
-    );
+    return _ackEmit('room.emit', {
+      'room': room,
+      'events': events,
+      'payload': payload,
+    }, label: 'emit $events → "$room"');
   }
 
   /// Emit with an acknowledgement, logging the response. Resolves null (and
   /// warns) when not connected.
-  Future<dynamic> _ackEmit(String message, Map<String, Object?> body, {required String label}) {
+  Future<dynamic> _ackEmit(
+    String message,
+    Map<String, Object?> body, {
+    required String label,
+  }) {
     final socket = _socket;
     if (socket == null) {
       NexusLog.warn('realtime $label dropped — not connected');
       return Future.value(null);
     }
     final completer = Completer<dynamic>();
-    socket.emitWithAck(message, body, ack: (dynamic res) {
-      final isError = res is Map && res['error'] != null;
-      if (isError) {
-        NexusLog.warn('realtime $label ← $res');
-      } else {
-        NexusLog.debug('realtime $label ← $res');
-      }
-      if (!completer.isCompleted) completer.complete(res);
-    });
+    socket.emitWithAck(
+      message,
+      body,
+      ack: (dynamic res) {
+        final isError = res is Map && res['error'] != null;
+        if (isError) {
+          NexusLog.warn('realtime $label ← $res');
+        } else {
+          NexusLog.debug('realtime $label ← $res');
+        }
+        if (!completer.isCompleted) completer.complete(res);
+      },
+    );
     return completer.future;
   }
 
   /// Listen for a server event.
-  void on(String event, NexusEventHandler handler) => _socket?.on(event, handler);
+  void on(String event, NexusEventHandler handler) =>
+      _socket?.on(event, handler);
 
   /// Stop listening for a server event.
   void off(String event) => _socket?.off(event);

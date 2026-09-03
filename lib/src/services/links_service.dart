@@ -22,13 +22,13 @@ class NexusLinks {
   }) async {
     final res = await _http.post('/partner/links/attribute', {
       'type': type,
-      if (clickId != null) 'clickId': clickId,
-      if (name != null) 'name': name,
-      if (platform != null) 'platform': platform,
+      'clickId': ?clickId,
+      'name': ?name,
+      'platform': ?platform,
       if (_id.distinctId != null) 'distinctId': _id.distinctId,
       'deviceId': _id.deviceKey,
       'sessionKey': _id.sessionKey,
-      if (properties != null) 'properties': properties,
+      'properties': ?properties,
     });
     final data = (res?['data'] ?? res) as Map<String, dynamic>?;
     return data?['link'] as Map<String, dynamic>?;
@@ -36,7 +36,10 @@ class NexusLinks {
 
   /// Convenience: parse a deep-link [uri] for `link_click_id` and attribute an
   /// open, returning the deep-link data.
-  Future<Map<String, dynamic>?> handleDeepLink(Uri uri, {String type = 'open'}) {
+  Future<Map<String, dynamic>?> handleDeepLink(
+    Uri uri, {
+    String type = 'open',
+  }) {
     final clickId = uri.queryParameters['link_click_id'];
     return attribute(type: type, clickId: clickId);
   }

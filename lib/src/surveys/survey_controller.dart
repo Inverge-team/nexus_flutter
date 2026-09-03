@@ -45,7 +45,9 @@ class NexusSurveyController extends ChangeNotifier {
   bool get isLast => _step + 1 >= totalSteps;
 
   NexusSurveyQuestion? get currentQuestion =>
-      _step >= 0 && _step < survey.questions.length ? survey.questions[_step] : null;
+      _step >= 0 && _step < survey.questions.length
+      ? survey.questions[_step]
+      : null;
 
   Object? answerFor(String questionId) => answers[questionId];
 
@@ -56,7 +58,8 @@ class NexusSurveyController extends ChangeNotifier {
 
   /// Toggle a value within a multi-select answer.
   void toggleChoice(String questionId, String value) {
-    final current = (answers[questionId] as List?)?.cast<String>() ?? <String>[];
+    final current =
+        (answers[questionId] as List?)?.cast<String>() ?? <String>[];
     final next = [...current];
     next.contains(value) ? next.remove(value) : next.add(value);
     answers[questionId] = next;
