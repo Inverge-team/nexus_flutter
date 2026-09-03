@@ -3,7 +3,7 @@
 # Run `pod lib lint nexus.podspec` to validate before publishing.
 #
 Pod::Spec.new do |s|
-  s.name             = 'nexus'
+  s.name             = 'nexus_flutter'
   s.version          = '0.0.1'
   s.summary          = 'A new Flutter plugin project.'
   s.description      = <<-DESC
@@ -14,13 +14,13 @@ A new Flutter plugin project.
   s.author           = { 'Your Company' => 'email@example.com' }
 
   s.source           = { :path => '.' }
-  s.source_files = 'nexus/Sources/nexus/**/*'
+  s.source_files = 'nexus_flutter/Sources/nexus_flutter/**/*'
 
   # If your plugin requires a privacy manifest, for example if it collects user
   # data, update the PrivacyInfo.xcprivacy file to describe your plugin's
   # privacy impact, and then uncomment this line. For more information,
   # see https://developer.apple.com/documentation/bundleresources/privacy_manifest_files
-  # s.resource_bundles = {'nexus_privacy' => ['nexus/Sources/nexus/PrivacyInfo.xcprivacy']}
+  # s.resource_bundles = {'nexus_privacy' => ['nexus_flutter/Sources/nexus_flutter/PrivacyInfo.xcprivacy']}
 
   s.dependency 'FlutterMacOS'
 

@@ -10,7 +10,6 @@ import 'identity.dart';
 import 'lifecycle.dart';
 import 'logging.dart';
 import 'outbox.dart';
-import 'platform/app_package_info.dart';
 import 'services/errors_service.dart';
 import 'services/events_service.dart';
 import 'services/flags_service.dart';
@@ -208,23 +207,27 @@ class Nexus {
     }
   }
 
-  /// Auto-detect app metadata (name/package/version/build/installer) and, from
-  /// the native layer, install/update time — then derive `appVersion`.
+  /// Assemble app metadata (name/package/version/build/installer + install/
+  /// update time) from the native device-info channel, then derive `appVersion`.
+  ///
+  /// Deliberately avoids `package_info_plus`: it imports `dart:io` (and `win32`
+  /// on Windows), which breaks WASM compatibility and muddies per-platform
+  /// analysis. The native layer already surfaces these fields.
   Future<void> _loadAppInfo() async {
     final app = <String, Object?>{};
-    try {
-      app.addAll(await loadPackageInfo());
-    } catch (_) {
-      /* unavailable in tests / some platforms (or web/WASM) */
-    }
-
-    // Native install/update time + installer (Android exact; iOS best-effort).
-    for (final k in ['installTime', 'updateTime', 'installerStore']) {
-      final v = _identity.deviceContext[k];
+    final dc = _identity.deviceContext;
+    for (final k in [
+      'appName',
+      'packageName',
+      'version',
+      'buildNumber',
+      'installerStore',
+      'installTime',
+      'updateTime',
+    ]) {
+      final v = dc[k];
       if (v != null) app[k] = v;
-      _identity.deviceContext.remove(
-        k,
-      ); // keep these under `app`, not top-level
+      dc.remove(k); // keep these under `app`, not top-level
     }
     app.removeWhere((_, v) => v == null || (v is String && v.isEmpty));
 
@@ -232,11 +235,12 @@ class Nexus {
     final build = app['buildNumber'] as String?;
     final release =
         config.appVersion ??
+        dc['appVersion'] as String? ??
         (version != null
             ? (build != null && build.isNotEmpty ? '$version+$build' : version)
             : null);
     if (release != null) {
-      _identity.deviceContext['appVersion'] = release;
+      dc['appVersion'] = release;
       app['release'] = release;
     }
     _identity.appInfo = app;

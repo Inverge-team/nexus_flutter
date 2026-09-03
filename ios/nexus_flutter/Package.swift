@@ -4,19 +4,19 @@
 import PackageDescription
 
 let package = Package(
-    name: "nexus",
+    name: "nexus_flutter",
     platforms: [
         .iOS("15.0")
     ],
     products: [
-        .library(name: "nexus", targets: ["nexus"])
+        .library(name: "nexus_flutter", targets: ["nexus_flutter"])
     ],
     dependencies: [
         .package(name: "FlutterFramework", path: "../FlutterFramework")
     ],
     targets: [
         .target(
-            name: "nexus",
+            name: "nexus_flutter",
             dependencies: [
                 .product(name: "FlutterFramework", package: "FlutterFramework")
             ],

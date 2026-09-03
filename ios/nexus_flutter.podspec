@@ -13,7 +13,7 @@ Nexus — one Flutter SDK for all Inverge Nexus services (realtime, sessions, ev
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'Inverge' => 'info@inverge.net' }
   s.source           = { :path => '.' }
-  s.source_files = 'nexus/Sources/nexus/**/*'
+  s.source_files = 'nexus_flutter/Sources/nexus_flutter/**/*'
   s.dependency 'Flutter'
   s.platform = :ios, '15.0'
 
@@ -25,5 +25,5 @@ Nexus — one Flutter SDK for all Inverge Nexus services (realtime, sessions, ev
   # required reason APIs, update the PrivacyInfo.xcprivacy file to describe your
   # plugin's privacy impact, and then uncomment this line. For more information,
   # see https://developer.apple.com/documentation/bundleresources/privacy_manifest_files
-  # s.resource_bundles = {'nexus_privacy' => ['nexus/Sources/nexus/PrivacyInfo.xcprivacy']}
+  # s.resource_bundles = {'nexus_privacy' => ['nexus_flutter/Sources/nexus_flutter/PrivacyInfo.xcprivacy']}
 end
