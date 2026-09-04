@@ -5,6 +5,10 @@
   start, so every session is attributed to that user instead of starting a new
   anonymous one. Never identified → still anonymous, as before. `reset()` clears
   the persisted identity (and is now async).
+- `context.nexus` is now safe to call from `initState()`. `NexusScope.of` looks
+  the scope up without registering an inherited-widget dependency (the Nexus
+  instance is a stable singleton), fixing the "dependOnInheritedWidgetOfExactType
+  was called before initState completed" assertion.
 
 ## 1.0.2
 

@@ -22,7 +22,12 @@ class NexusScope extends StatelessWidget {
   Nexus get _resolved => nexus ?? Nexus.instance;
 
   static Nexus of(BuildContext context) {
-    final scope = context.dependOnInheritedWidgetOfExactType<_NexusInherited>();
+    // Look the scope up WITHOUT registering an inheritance dependency. The Nexus
+    // instance is a stable singleton, so there is nothing to rebuild on — and
+    // dependOnInheritedWidgetOfExactType throws when called from initState(),
+    // which is a common (and reasonable) place to grab `context.nexus`. Falls
+    // back to the global instance when no NexusScope is present.
+    final scope = context.getInheritedWidgetOfExactType<_NexusInherited>();
     return scope?.nexus ?? Nexus.instance;
   }
 
