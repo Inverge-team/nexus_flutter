@@ -5,10 +5,12 @@
   start, so every session is attributed to that user instead of starting a new
   anonymous one. Never identified → still anonymous, as before. `reset()` clears
   the persisted identity (and is now async).
-- `context.nexus` is now safe to call from `initState()`. `NexusScope.of` looks
-  the scope up without registering an inherited-widget dependency (the Nexus
-  instance is a stable singleton), fixing the "dependOnInheritedWidgetOfExactType
-  was called before initState completed" assertion.
+- `context.nexus` is now safe to call from any widget lifecycle method,
+  including `initState()` and `dispose()`. `NexusScope.of` no longer registers
+  an inherited-widget dependency and only consults the scope while the element
+  is mounted (the Nexus instance is a stable singleton), fixing both the
+  "dependOnInheritedWidgetOfExactType called before initState completed" and the
+  "Looking up a deactivated widget's ancestor is unsafe" assertions.
 
 ## 1.0.2
 

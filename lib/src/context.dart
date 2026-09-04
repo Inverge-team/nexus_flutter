@@ -22,13 +22,22 @@ class NexusScope extends StatelessWidget {
   Nexus get _resolved => nexus ?? Nexus.instance;
 
   static Nexus of(BuildContext context) {
-    // Look the scope up WITHOUT registering an inheritance dependency. The Nexus
-    // instance is a stable singleton, so there is nothing to rebuild on — and
-    // dependOnInheritedWidgetOfExactType throws when called from initState(),
-    // which is a common (and reasonable) place to grab `context.nexus`. Falls
-    // back to the global instance when no NexusScope is present.
-    final scope = context.getInheritedWidgetOfExactType<_NexusInherited>();
-    return scope?.nexus ?? Nexus.instance;
+    // `context.nexus` must be safe from ANY widget lifecycle method — including
+    // initState() and dispose(), where looking up an inherited ancestor throws
+    // ("deactivated widget's ancestor is unsafe" / "called before initState
+    // completed"). The Nexus instance is a global singleton, so the NexusScope
+    // override is only a nicety: consult it while the element is mounted (no
+    // rebuild dependency is registered), and fall back to the global instance
+    // in every other case.
+    if (context.mounted) {
+      try {
+        final scope = context.getInheritedWidgetOfExactType<_NexusInherited>();
+        if (scope != null) return scope.nexus;
+      } catch (_) {
+        /* unsafe lookup context — fall through to the global instance */
+      }
+    }
+    return Nexus.instance;
   }
 
   @override
