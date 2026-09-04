@@ -16,12 +16,14 @@ void main() {
       await IdentityStore.save(
         distinctId: 'user-42',
         name: 'Sam',
+        phone: '+15551234567',
         traits: {'plan': 'pro'},
       );
       final restored = await IdentityStore.load();
       expect(restored, isNotNull);
       expect(restored!.distinctId, 'user-42');
       expect(restored.name, 'Sam');
+      expect(restored.phone, '+15551234567');
       expect(restored.traits['plan'], 'pro');
     });
 

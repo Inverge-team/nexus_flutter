@@ -1,5 +1,7 @@
 ## 1.0.3
 
+- `identify()` now accepts an optional `phone` number (alongside `email`/`name`/
+  `traits`) — sent to the backend and persisted with the identity.
 - Persist the identified end-user across app launches. Once `identify()` names
   the user, the identity is remembered on device and restored on the next cold
   start, so every session is attributed to that user instead of starting a new

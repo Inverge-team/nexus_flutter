@@ -18,6 +18,7 @@ class NexusSessions {
     String distinctId, {
     String? email,
     String? name,
+    String? phone,
     Map<String, Object?>? traits,
   }) async {
     _id.distinctId = distinctId;
@@ -28,12 +29,14 @@ class NexusSessions {
       distinctId: distinctId,
       email: email,
       name: name,
+      phone: phone,
       traits: _id.traits,
     );
     await _http.post('/partner/sessions/identify', {
       'distinctId': distinctId,
       'email': ?email,
       'name': ?name,
+      'phone': ?phone,
       'traits': ?traits,
     });
     await track();

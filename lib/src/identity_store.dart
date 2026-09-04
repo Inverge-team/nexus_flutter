@@ -8,12 +8,14 @@ class StoredIdentity {
     required this.distinctId,
     this.email,
     this.name,
+    this.phone,
     this.traits = const {},
   });
 
   final String distinctId;
   final String? email;
   final String? name;
+  final String? phone;
   final Map<String, Object?> traits;
 }
 
@@ -33,6 +35,7 @@ class IdentityStore {
     required String distinctId,
     String? email,
     String? name,
+    String? phone,
     Map<String, Object?> traits = const {},
   }) async {
     try {
@@ -43,6 +46,7 @@ class IdentityStore {
           'distinctId': distinctId,
           'email': ?email,
           'name': ?name,
+          'phone': ?phone,
           if (traits.isNotEmpty) 'traits': traits,
         }),
       );
@@ -63,6 +67,7 @@ class IdentityStore {
         distinctId: id,
         email: map['email'] as String?,
         name: map['name'] as String?,
+        phone: map['phone'] as String?,
         traits: (map['traits'] as Map?)?.cast<String, Object?>() ?? const {},
       );
     } catch (_) {

@@ -264,8 +264,15 @@ class Nexus {
     String distinctId, {
     String? email,
     String? name,
+    String? phone,
     Map<String, Object?>? traits,
-  }) => sessions.identify(distinctId, email: email, name: name, traits: traits);
+  }) => sessions.identify(
+    distinctId,
+    email: email,
+    name: name,
+    phone: phone,
+    traits: traits,
+  );
 
   /// Forget the current user and start a fresh session (e.g. on logout). Also
   /// clears the persisted identity so the next launch starts anonymous.
