@@ -8,7 +8,7 @@ Future<void> main() async {
   await Nexus.init(
     const NexusConfig(
       apiKey: 'nxs_your_api_key',
-      baseUrl: 'https://nexus.inverge.net',
+      baseUrl: 'https://services.inverge.net',
       logging: true,
     ),
   );

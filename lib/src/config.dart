@@ -4,7 +4,7 @@ import 'logging.dart';
 class NexusConfig {
   const NexusConfig({
     required this.apiKey,
-    this.baseUrl = 'https://nexus.inverge.net',
+    this.baseUrl = 'https://services.inverge.net',
     this.realtimeUrl,
     this.autoTrackSessions = true,
     this.autoCaptureErrors = true,

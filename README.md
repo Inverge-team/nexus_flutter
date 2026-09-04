@@ -39,7 +39,7 @@ Add the dependency (from a path, git, or pub once published):
 
 ```yaml
 dependencies:
-  nexus_flutter: ^1.0.0
+  nexus_flutter: ^1.0.1
 ```
 
 ```bash
@@ -65,7 +65,7 @@ Future<void> main() async {
 
   await Nexus.init(const NexusConfig(
     apiKey: 'nxs_live_xxx',
-    baseUrl: 'https://nexus.inverge.net',
+    baseUrl: 'https://services.inverge.net',
     // opt‑in products:
     remoteConfigEnabled: true,
     surveysEnabled: true,
@@ -88,7 +88,7 @@ Every field of `NexusConfig` (all optional except `apiKey`):
 | Field | Type | Default | Purpose |
 |---|---|---|---|
 | `apiKey` | `String` | — | Tenant API key (`nxs_…`). Sent as `x-api-key` and in the socket handshake. |
-| `baseUrl` | `String` | `https://nexus.inverge.net` | API origin. Partner endpoints live under `/partner`. |
+| `baseUrl` | `String` | `https://services.inverge.net` | API origin. Partner endpoints live under `/partner`. |
 | `realtimeUrl` | `String?` | `baseUrl` | Socket.IO origin, if different. |
 | `autoTrackSessions` | `bool` | `true` | Start & keep a journey session automatically. |
 | `autoCaptureErrors` | `bool` | `true` | Install Flutter/Dart error handlers. |
