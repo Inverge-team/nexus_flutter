@@ -1,3 +1,7 @@
+## 1.0.2
+
+- Backend base url updated.
+
 ## 1.0.1
 
 - Drop package_info_plus (pulls dart:io/win32); source app metadata from the
