@@ -7,6 +7,7 @@ import '../nexus_platform_interface.dart';
 import 'config.dart';
 import 'http_client.dart';
 import 'identity.dart';
+import 'identity_store.dart';
 import 'lifecycle.dart';
 import 'logging.dart';
 import 'outbox.dart';
@@ -87,6 +88,7 @@ class Nexus {
 
     _identity.deviceContext = await NexusPlatform.instance.deviceInfo();
     await _loadDeviceKey();
+    await _loadIdentity();
     await _loadAppInfo();
     NexusLog.debug(
       'identity ready — deviceKey=${_identity.deviceKey}, '
@@ -207,6 +209,17 @@ class Nexus {
     }
   }
 
+  /// Restore the identified end-user persisted by a previous [identify] so this
+  /// launch continues as that user — every session is then attributed to them.
+  /// If nothing was ever identified, stays anonymous (the default behavior).
+  Future<void> _loadIdentity() async {
+    final stored = await IdentityStore.load();
+    if (stored == null) return;
+    _identity.distinctId = stored.distinctId;
+    _identity.traits.addAll(stored.traits);
+    NexusLog.info('restored identity — distinctId=${stored.distinctId}');
+  }
+
   /// Assemble app metadata (name/package/version/build/installer + install/
   /// update time) from the native device-info channel, then derive `appVersion`.
   ///
@@ -254,8 +267,9 @@ class Nexus {
     Map<String, Object?>? traits,
   }) => sessions.identify(distinctId, email: email, name: name, traits: traits);
 
-  /// Forget the current user and start a fresh session (e.g. on logout).
-  void reset() => sessions.reset();
+  /// Forget the current user and start a fresh session (e.g. on logout). Also
+  /// clears the persisted identity so the next launch starts anonymous.
+  Future<void> reset() => sessions.reset();
 
   /// Record a screen/page change for session replay's Pages tab. Wire
   /// [NexusNavigatorObserver] into `navigatorObservers` to do this automatically.

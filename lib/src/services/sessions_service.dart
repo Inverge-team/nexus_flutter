@@ -1,6 +1,7 @@
 import '../config.dart';
 import '../http_client.dart';
 import '../identity.dart';
+import '../identity_store.dart';
 import '../logging.dart';
 
 /// The sessions spine. `identify` names the end-user; `track` starts/refreshes
@@ -21,6 +22,14 @@ class NexusSessions {
   }) async {
     _id.distinctId = distinctId;
     if (traits != null) _id.traits.addAll(traits);
+    // Remember the user on device so future launches restore this identity
+    // instead of starting anonymous (see NexusIdentity + Nexus._loadIdentity).
+    await IdentityStore.save(
+      distinctId: distinctId,
+      email: email,
+      name: name,
+      traits: _id.traits,
+    );
     await _http.post('/partner/sessions/identify', {
       'distinctId': distinctId,
       'email': ?email,
@@ -58,10 +67,12 @@ class NexusSessions {
     return sessionId;
   }
 
-  /// Forget the current user (e.g. on logout) and start a fresh session.
-  void reset() {
+  /// Forget the current user (e.g. on logout) and start a fresh session. Also
+  /// clears the persisted identity, so subsequent launches start anonymous again.
+  Future<void> reset() async {
     _id.distinctId = null;
     _id.traits.clear();
     _id.rotateSession();
+    await IdentityStore.clear();
   }
 }

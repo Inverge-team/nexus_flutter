@@ -1,3 +1,11 @@
+## 1.0.3
+
+- Persist the identified end-user across app launches. Once `identify()` names
+  the user, the identity is remembered on device and restored on the next cold
+  start, so every session is attributed to that user instead of starting a new
+  anonymous one. Never identified → still anonymous, as before. `reset()` clears
+  the persisted identity (and is now async).
+
 ## 1.0.2
 
 - Backend base url updated.
