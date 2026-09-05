@@ -22,6 +22,7 @@ export 'src/services/errors_service.dart' show NexusErrors;
 export 'src/services/logs_service.dart' show NexusLogs;
 export 'src/services/flags_service.dart' show NexusFlags;
 export 'src/services/links_service.dart' show NexusLinks;
+export 'src/services/push_service.dart' show NexusPush, PushPlatform, PushProvider;
 export 'src/services/realtime_service.dart'
     show NexusRealtime, NexusEventHandler;
 export 'src/services/remote_config_service.dart' show NexusRemoteConfig;

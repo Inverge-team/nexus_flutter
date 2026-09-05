@@ -16,6 +16,7 @@ import 'services/events_service.dart';
 import 'services/flags_service.dart';
 import 'services/links_service.dart';
 import 'services/logs_service.dart';
+import 'services/push_service.dart';
 import 'services/realtime_service.dart';
 import 'services/remote_config_service.dart';
 import 'services/replay_service.dart';
@@ -69,6 +70,7 @@ class Nexus {
   late final NexusReplay replay;
   late final NexusSurveys surveys;
   late final NexusRemoteConfig remoteConfig;
+  late final NexusPush push;
 
   /// Initialise the SDK once at startup. Re-calling disposes the previous
   /// instance and replaces it.
@@ -111,6 +113,7 @@ class Nexus {
     replay = NexusReplay(_outbox, _identity, config);
     surveys = NexusSurveys(_http, _identity, config);
     remoteConfig = NexusRemoteConfig(_http, _identity, config);
+    push = NexusPush(_http, _identity, config);
     // Event-triggered surveys fire off analytics events.
     events.onTracked = surveys.onEvent;
 

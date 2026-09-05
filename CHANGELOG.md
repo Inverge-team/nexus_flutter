@@ -1,3 +1,10 @@
+## 1.0.4
+
+- Add Nexus Push: `context.nexus.push` / `Nexus.instance.push`. `registerToken`
+  registers this device's FCM/APNs/WebPush token (correlated to the journey
+  identity) so campaigns/automations can reach it; `reportOpen(data)` attributes
+  notification opens (reads `nexus_campaign_id`); `unregister` on logout.
+
 ## 1.0.3
 
 - `identify()` now accepts an optional `phone` number (alongside `email`/`name`/
