@@ -3,10 +3,10 @@
 `nexus_flutter` is the umbrella client for the Inverge Nexus platform. One
 initialization gives you **sessions, product analytics, structured logging,
 error/crash monitoring, feature flags, remote config, deep‑link attribution,
-realtime messaging, session replay, and in‑product surveys** — all correlated to
+realtime messaging, session replay, in‑product surveys, and push notifications** — all correlated to
 a single user journey.
 
-- Package: `nexus_flutter` · version `1.0.0`
+- Package: `nexus_flutter` · version `1.0.4`
 - Platforms: Android, iOS, Web, macOS, Windows, Linux
 - Dart SDK: `^3.13.0`
 
@@ -29,7 +29,8 @@ a single user journey.
 13. [Realtime](#13-realtime)
 14. [Session replay](#14-session-replay)
 15. [Surveys](#15-surveys)
-16. [Lifecycle, flushing & disposal](#16-lifecycle-flushing--disposal)
+16. [Push notifications](#16-push-notifications)
+17. [Lifecycle, flushing & disposal](#17-lifecycle-flushing--disposal)
 
 ---
 
@@ -129,7 +130,7 @@ context.nexus.events.track('opened_cart');
 ```
 
 Services exposed on the instance: `sessions`, `events`, `logs`, `errors`,
-`flags`, `remoteConfig`, `links`, `realtime`, `replay`, `surveys`.
+`flags`, `remoteConfig`, `links`, `realtime`, `replay`, `surveys`, `push`.
 
 ---
 
@@ -490,7 +491,83 @@ answers, and `submit`/`close`. `NexusSurvey`/`NexusSurveyQuestion`/
 
 ---
 
-## 16. Lifecycle, flushing & disposal
+## 16. Push notifications
+
+Nexus Push delivers notifications via **FCM** (Android), **APNs** (iOS) and
+**Web Push**, targeted by the same journey identity you already use — compose,
+segment, schedule, A/B test and track opens from the console.
+
+The SDK is **provider-agnostic and Firebase-free**: obtain the device push token
+with your own plugin (e.g. [`firebase_messaging`](https://pub.dev/packages/firebase_messaging))
+and hand it to Nexus. Nexus correlates it to the current user (`distinctId` +
+`deviceKey`) and relays it to the backend.
+
+Access it as `context.nexus.push` or `Nexus.instance.push`.
+
+### Register a device token
+
+```dart
+import 'package:firebase_messaging/firebase_messaging.dart';
+
+// 1. Ask the OS for permission (via your push plugin).
+await FirebaseMessaging.instance.requestPermission();
+
+// 2. Get the token and register it with Nexus.
+final token = await FirebaseMessaging.instance.getToken();
+if (token != null) {
+  await Nexus.instance.push.registerToken(
+    token,
+    platform: PushPlatform.android, // or .ios / .web
+    // provider defaults to fcm on iOS/Android, webpush on web —
+    // pass PushProvider.apns if you register raw APNs tokens.
+  );
+}
+
+// 3. Re-register when the token rotates.
+FirebaseMessaging.instance.onTokenRefresh.listen((t) {
+  Nexus.instance.push.registerToken(t, platform: PushPlatform.android);
+});
+```
+
+> Call `registerToken` again **after `identify()`** if you want an existing
+> device attributed to the just-identified user.
+
+### Track opens (delivery outcomes & A/B results)
+
+Every Nexus campaign push carries a `nexus_campaign_id` in its `data` payload.
+Pass the notification's data to `reportOpen` when the user taps it — this powers
+open-rate and A/B outcomes in the console.
+
+```dart
+// App opened from a terminated state by tapping a notification:
+final initial = await FirebaseMessaging.instance.getInitialMessage();
+if (initial != null) Nexus.instance.push.reportOpen(initial.data);
+
+// App opened from background by tapping a notification:
+FirebaseMessaging.onMessageOpenedApp.listen((m) {
+  Nexus.instance.push.reportOpen(m.data);
+});
+```
+
+### Stop delivery (logout / uninstall)
+
+```dart
+await Nexus.instance.push.unregister(); // defaults to the last registered token
+```
+
+| Method | Purpose |
+|---|---|
+| `registerToken(token, {platform, provider?, lang?})` | Register/refresh this device's push token, correlated to the journey identity. |
+| `reportOpen(Map<String,dynamic> data)` | Attribute an open (reads `nexus_campaign_id` from the payload). No-op otherwise. |
+| `unregister([token])` | Stop delivering to a token (defaults to the last registered). |
+
+`PushPlatform` is `ios` / `android` / `web`; `PushProvider` is `fcm` / `apns` /
+`webpush`. Provider credentials, segments, campaigns, automations and A/B tests
+are configured in the **Push** section of the Nexus console.
+
+---
+
+## 17. Lifecycle, flushing & disposal
 
 ```dart
 await Nexus.instance.flush();   // flush all batched telemetry now
