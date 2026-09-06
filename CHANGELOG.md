@@ -3,9 +3,15 @@
 - Push: rich notifications. Campaigns composed with action buttons, Android large/
   big/small icon + lockscreen visibility + accent colour, iOS badge/relevance/
   interruption level/subtitle, and web icon/image/badge are honoured on delivery.
-  The Android foreground renderer draws them natively (downloads large-icon /
-  big-picture images, renders action buttons). New `push.onOpened` callback
-  surfaces the open — including which action button was tapped and its URL.
+  - **Android** renders every notification natively (no third-party packages) in
+    **all app states** — foreground, background and killed — so action buttons
+    and rich media are consistent everywhere. Campaigns are delivered as
+    high-priority data messages and a background handler draws them.
+  - **iOS** ships a ready-to-use Notification Service Extension
+    (`ios/NexusNotificationServiceExtension/`) that turns the payload into action
+    buttons + attached images in every state (one-time app setup, see README).
+  - New `push.onOpened` callback surfaces the open — including which action button
+    was tapped and its URL.
 
 ## 1.1.0
 

@@ -152,6 +152,13 @@ class NexusPush {
       // ourselves so notifications appear whether the app is open or not.
       if (_cfg.pushForegroundDisplay) await _setupForegroundDisplay(platform, messaging);
 
+      // Android: campaigns arrive as data messages so the SDK renders every
+      // notification natively (foreground AND background/killed) with full
+      // options + action buttons. Register the background renderer.
+      if (platform == PushPlatform.android && _cfg.pushForegroundDisplay) {
+        FirebaseMessaging.onBackgroundMessage(nexusPushBackgroundHandler);
+      }
+
       final token = platform == PushPlatform.web
           ? await messaging.getToken(vapidKey: _cfg.pushWebVapidKey)
           : await messaging.getToken();
@@ -260,55 +267,12 @@ class NexusPush {
     _fgSub = FirebaseMessaging.onMessage.listen(_showForeground);
   }
 
-  /// Render one foreground message as a native notification (Android), honouring
-  /// the campaign's rich options (buttons, large/big/small icon, lockscreen
-  /// visibility, accent colour) carried in `nexus_options`.
-  Future<void> _showForeground(RemoteMessage m) async {
-    final n = m.notification;
-    final title = n?.title ?? m.data['title'] as String?;
-    final body = n?.body ?? m.data['body'] as String?;
-    if (title == null && body == null) return; // data-only message — nothing to show
-    final opt = _parseOptions(m.data['nexus_options']);
-    final buttons = _parseButtons(opt['buttons']);
-    await NexusPlatform.instance.showNotification(
-      id: m.hashCode,
-      title: title,
-      body: body,
-      channelId: opt['androidChannelId'] as String? ?? n?.android?.channelId ?? _cfg.pushAndroidChannelId,
-      channelName: _cfg.pushAndroidChannelName,
-      payload: jsonEncode(m.data),
-      largeIcon: opt['androidLargeIcon'] as String?,
-      bigPicture: (opt['androidBigPicture'] as String?) ?? n?.android?.imageUrl,
-      smallIcon: opt['androidSmallIcon'] as String?,
-      visibility: opt['androidVisibility'] as String?,
-      accentColor: opt['androidAccentColor'] as String?,
-      buttons: buttons,
-    );
-  }
-
-  Map<String, dynamic> _parseOptions(Object? raw) {
-    if (raw is String && raw.isNotEmpty) {
-      try {
-        final d = jsonDecode(raw);
-        if (d is Map) return d.cast<String, dynamic>();
-      } catch (_) {}
-    }
-    return const {};
-  }
-
-  List<Map<String, String?>>? _parseButtons(Object? raw) {
-    if (raw is! List) return null;
-    final out = <Map<String, String?>>[];
-    for (final b in raw) {
-      if (b is Map) {
-        final id = b['id']?.toString();
-        final text = b['text']?.toString();
-        if (id == null || text == null) continue;
-        out.add({'id': id, 'text': text, 'icon': b['icon']?.toString(), 'url': b['url']?.toString()});
-      }
-    }
-    return out.isEmpty ? null : out;
-  }
+  /// Render one foreground message as a native notification (Android).
+  Future<void> _showForeground(RemoteMessage m) => renderNexusAndroidNotification(
+        m,
+        channelId: _cfg.pushAndroidChannelId,
+        channelName: _cfg.pushAndroidChannelName,
+      );
 
   Future<bool> _ensureFirebase(PushPlatform platform) async {
     if (Firebase.apps.isNotEmpty) return true;
@@ -341,4 +305,69 @@ class NexusPush {
       p == PushPlatform.web ? PushProvider.webpush : PushProvider.fcm;
 
   String _mask(String t) => t.length <= 10 ? '***' : '${t.substring(0, 8)}…';
+}
+
+/// Background FCM handler (Android). Runs in a separate isolate when a data
+/// message arrives with the app backgrounded or killed, and renders the
+/// notification natively — so action buttons and rich options work in every
+/// app state. Registered by [NexusPush.start].
+@pragma('vm:entry-point')
+Future<void> nexusPushBackgroundHandler(RemoteMessage message) async {
+  await renderNexusAndroidNotification(message);
+}
+
+/// Render an Android notification from an FCM [message] using the native plugin,
+/// honouring the campaign's rich options (buttons, large/big/small icon,
+/// lockscreen visibility, accent colour) carried in `nexus_options`. Shared by
+/// the foreground listener and the background isolate handler.
+Future<void> renderNexusAndroidNotification(
+  RemoteMessage message, {
+  String channelId = 'nexus_default',
+  String channelName = 'Notifications',
+}) async {
+  final n = message.notification;
+  final data = message.data;
+  final title = (data['nexus_title'] ?? data['title'] ?? n?.title) as String?;
+  final body = (data['nexus_body'] ?? data['body'] ?? n?.body) as String?;
+  if (title == null && body == null) return; // silent data message — nothing to show
+  final opt = _parseOptions(data['nexus_options']);
+  await NexusPlatform.instance.showNotification(
+    id: message.hashCode,
+    title: title,
+    body: body,
+    channelId: (opt['androidChannelId'] as String?) ?? n?.android?.channelId ?? channelId,
+    channelName: channelName,
+    payload: jsonEncode(data),
+    largeIcon: opt['androidLargeIcon'] as String?,
+    bigPicture: (opt['androidBigPicture'] as String?) ?? n?.android?.imageUrl,
+    smallIcon: opt['androidSmallIcon'] as String?,
+    visibility: opt['androidVisibility'] as String?,
+    accentColor: opt['androidAccentColor'] as String?,
+    buttons: _parseButtons(opt['buttons']),
+  );
+}
+
+Map<String, dynamic> _parseOptions(Object? raw) {
+  if (raw is String && raw.isNotEmpty) {
+    try {
+      final d = jsonDecode(raw);
+      if (d is Map) return d.cast<String, dynamic>();
+    } catch (_) {}
+  }
+  if (raw is Map) return raw.cast<String, dynamic>();
+  return const {};
+}
+
+List<Map<String, String?>>? _parseButtons(Object? raw) {
+  if (raw is! List) return null;
+  final out = <Map<String, String?>>[];
+  for (final b in raw) {
+    if (b is Map) {
+      final id = b['id']?.toString();
+      final text = b['text']?.toString();
+      if (id == null || text == null) continue;
+      out.add({'id': id, 'text': text, 'icon': b['icon']?.toString(), 'url': b['url']?.toString()});
+    }
+  }
+  return out.isEmpty ? null : out;
 }

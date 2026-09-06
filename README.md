@@ -584,10 +584,12 @@ they're delivered per platform, no app code required:
 
 - **Action buttons** (all platforms) — up to 3, each with an optional URL.
 - **Android** — large icon, big picture, small icon, accent colour, lockscreen
-  visibility (public / private / secret). The SDK renders these natively in the
-  foreground (no third-party packages); in the background FCM draws the icon /
-  big-picture / visibility itself.
-- **iOS** — badge count, relevance score, interruption level, subtitle.
+  visibility (public / private / secret). The SDK renders every notification
+  natively (no third-party packages) in **all app states** — foreground,
+  background, and killed — so action buttons and rich media are consistent
+  everywhere (campaigns are delivered as high-priority data messages).
+- **iOS** — badge count, relevance score, interruption level, subtitle. Action
+  buttons + rich media need a Notification Service Extension (one-time setup, below).
 - **Web** — icon, image, badge, and action buttons.
 
 Handle taps (and action-button taps) with a single callback:
@@ -598,6 +600,23 @@ Nexus.instance.push.onOpened = (open) {
   if (open.actionUrl != null) launchUrl(Uri.parse(open.actionUrl!));
 };
 ```
+
+#### iOS action buttons & rich media (Notification Service Extension)
+
+iOS only renders custom action buttons / images if the app ships a **Notification
+Service Extension** — the same one-time step OneSignal requires (iOS won't let an
+SDK add one for you). Without it, iOS notifications still show (title, body, badge,
+subtitle, interruption level); with it, buttons and images render in every state.
+
+1. In Xcode: **File → New → Target → Notification Service Extension**, name it
+   e.g. `NexusNotificationServiceExtension`, and set its deployment target to iOS 12+.
+2. Replace the generated `NotificationService.swift` with the SDK's ready-made
+   extension — copy
+   [`ios/NexusNotificationServiceExtension/NexusNotificationService.swift`](ios/NexusNotificationServiceExtension/NexusNotificationService.swift)
+   (or set the target's Swift file to it). It turns `nexus_buttons` into action
+   buttons and attaches `nexus_image`.
+3. Build & run. Nexus already sends `mutable-content: 1` and the button defs, so
+   the extension activates automatically.
 
 ### Advanced: bring your own token
 
