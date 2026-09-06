@@ -559,6 +559,24 @@ default (and then to the base message). `en-US` falls back to `en` automatically
 Works before or after push is enabled — set it early and it's applied on the first
 registration.
 
+### Subscriber tags
+
+Tag a device with your own key/values to identify and target users — the same
+idea as OneSignal tags:
+
+```dart
+await Nexus.instance.push.setTag('role', 'client');
+await Nexus.instance.push.setTag('username', 'ehs4nnn');
+await Nexus.instance.push.setTags({'plan': 'pro', 'city': 'baghdad'}); // bulk
+await Nexus.instance.push.removeTag('city');
+```
+
+Tags attach to the device token. In the console (Push → **Segments**) you build
+tag-condition segments — *Tag `role` **is** `client`*, *`plan` **exists***, etc.
+(operators: is / is not / contains / exists / does not exist) — and target
+campaigns or automations at them. Safe before or after push is enabled: tags sync
+immediately once a token exists, otherwise on the next registration.
+
 ### Advanced: bring your own token
 
 If you manage tokens yourself (a different messaging plugin, or raw APNs), skip
@@ -575,6 +593,7 @@ await Nexus.instance.push.unregister();        // on logout
 |---|---|
 | `start()` | Turn-key enable (runs automatically with `pushEnabled: true`). |
 | `setLanguage(lang)` | Set the user's app language so campaigns are delivered localized to it. |
+| `setTag(key, value)` / `setTags(map)` / `removeTag(key)` | Set/remove subscriber tags for segment targeting. |
 | `registerToken(token, {platform, provider?, lang?})` | Register/refresh a device token, correlated to the journey identity. |
 | `reportOpen(Map<String,dynamic> data)` | Attribute an open (reads `nexus_campaign_id`). No-op otherwise. |
 | `unregister([token])` | Stop delivering to a token (defaults to the last registered). |

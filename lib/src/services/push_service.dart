@@ -30,6 +30,8 @@ class NexusPush {
 
   String? _token;
   String? _lang;
+  final Map<String, String> _tags = {};
+  bool _tagsTouched = false;
   PushPlatform? _lastPlatform;
   PushProvider? _lastProvider;
   StreamSubscription<String>? _refreshSub;
@@ -55,6 +57,51 @@ class NexusPush {
     final code = lang.trim();
     if (code.isEmpty || code == _lang) return;
     _lang = code;
+    final token = _token;
+    final platform = _lastPlatform;
+    if (token != null && platform != null) {
+      await registerToken(token, platform: platform, provider: _lastProvider);
+    }
+  }
+
+  /// The subscriber tags currently set on this device.
+  Map<String, String> get tags => Map.unmodifiable(_tags);
+
+  /// Tag this subscriber with a key/value so you can target them in segments —
+  /// e.g. `setTag('role', 'client')`, `setTag('username', 'ehs4nnn')`. Build
+  /// tag-condition segments in the console (Push → Segments → Tag is …).
+  ///
+  /// Safe before or after push is enabled: if a token is already registered the
+  /// tags sync immediately, otherwise they're attached on the next registration.
+  Future<void> setTag(String key, String value) => setTags({key: value});
+
+  /// Set several tags at once (merged into the existing tags).
+  Future<void> setTags(Map<String, String> tags) async {
+    if (tags.isEmpty) return;
+    tags.forEach((k, v) {
+      final key = k.trim();
+      if (key.isNotEmpty) _tags[key] = v;
+    });
+    _tagsTouched = true;
+    await _syncTags();
+  }
+
+  /// Remove a previously set tag.
+  Future<void> removeTag(String key) async {
+    if (_tags.remove(key.trim()) == null) return;
+    _tagsTouched = true;
+    await _syncTags();
+  }
+
+  /// Clear all tags from this subscriber.
+  Future<void> clearTags() async {
+    if (_tags.isEmpty && _tagsTouched) return;
+    _tags.clear();
+    _tagsTouched = true;
+    await _syncTags();
+  }
+
+  Future<void> _syncTags() async {
     final token = _token;
     final platform = _lastPlatform;
     if (token != null && platform != null) {
@@ -131,6 +178,7 @@ class NexusPush {
       'deviceKey': _id.deviceKey,
       'appVersion': ?_cfg.appVersion,
       'lang': ?effectiveLang,
+      if (_tagsTouched) 'tags': _tags,
       ..._id.wireContext,
     });
   }

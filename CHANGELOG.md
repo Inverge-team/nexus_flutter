@@ -1,3 +1,11 @@
+## 1.0.7
+
+- Push: subscriber tags. `push.setTag('role', 'client')` / `setTags({...})` /
+  `removeTag(key)` attach OneSignal-style key/value tags to the device token.
+  Build tag-condition segments in the console (Tag is / is not / contains /
+  exists / does not exist) to target campaigns and automations. Tags sync
+  immediately when a token exists, otherwise on the next registration.
+
 ## 1.0.6
 
 - Push: localized notifications. `Nexus.instance.push.setLanguage('en')` attaches
