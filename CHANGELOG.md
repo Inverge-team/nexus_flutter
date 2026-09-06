@@ -1,9 +1,14 @@
 ## 1.0.4
 
-- Add Nexus Push: `context.nexus.push` / `Nexus.instance.push`. `registerToken`
-  registers this device's FCM/APNs/WebPush token (correlated to the journey
-  identity) so campaigns/automations can reach it; `reportOpen(data)` attributes
-  notification opens (reads `nexus_campaign_id`); `unregister` on logout.
+- Add Nexus Push (`context.nexus.push` / `Nexus.instance.push`).
+  - **Turn-key**: set `pushEnabled: true` and the SDK handles everything —
+    permission, FCM token acquisition + registration (correlated to the journey
+    identity), token refresh, and open tracking. No push code in your app; only
+    the standard Firebase config is required. Bundles `firebase_core` +
+    `firebase_messaging`.
+  - **Advanced/BYO**: `registerToken` / `reportOpen` / `unregister` for apps that
+    manage their own tokens (e.g. raw APNs). `reportOpen` reads `nexus_campaign_id`
+    for delivery + A/B outcomes.
 
 ## 1.0.3
 

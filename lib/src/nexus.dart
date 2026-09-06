@@ -144,6 +144,11 @@ class Nexus {
       unawaited(surveys.fetch());
     }
 
+    // Turn-key push: permission, token registration, refresh + open tracking.
+    if (config.pushEnabled) {
+      unawaited(push.start());
+    }
+
     // Fetch remote config, and (optionally) subscribe to realtime updates.
     if (config.remoteConfigEnabled) {
       unawaited(remoteConfig.fetch());
@@ -314,6 +319,7 @@ class Nexus {
     replay.dispose();
     surveys.dispose();
     remoteConfig.dispose();
+    unawaited(push.dispose());
     realtime.disconnect();
     _outbox.dispose();
     _http.close();

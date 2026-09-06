@@ -27,6 +27,9 @@ class NexusConfig {
     this.remoteConfigEnabled = false,
     this.remoteConfigRealtime = false,
     this.remoteConfigDefaults = const {},
+    this.pushEnabled = false,
+    this.pushAutoRequestPermission = true,
+    this.pushWebVapidKey,
     this.appVersion,
     this.defaultProperties = const {},
   });
@@ -128,6 +131,22 @@ class NexusConfig {
   /// Fetch Remote Config at startup (and on foreground). Read values via
   /// `nexus.remoteConfig.getString(...)` etc. Default `false` (billed per fetch
   /// — opt in). Set in-app fallbacks with [remoteConfigDefaults].
+  /// Turn-key push notifications. When `true`, the SDK requests permission,
+  /// obtains the device's FCM token, registers it with Nexus, re-registers on
+  /// refresh, and reports notification opens — all automatically. You only need
+  /// the platform Firebase config (google-services.json / GoogleService-Info.plist).
+  /// Default `false`.
+  final bool pushEnabled;
+
+  /// Ask the OS for notification permission when push is enabled. Default `true`;
+  /// set `false` to request it yourself at a better moment (then the token is
+  /// registered on the next launch, or call `nexus.push.start()`).
+  final bool pushAutoRequestPermission;
+
+  /// Web only — the VAPID public key for FCM web push. Required to obtain a web
+  /// token; ignored on iOS/Android.
+  final String? pushWebVapidKey;
+
   final bool remoteConfigEnabled;
 
   /// Subscribe to realtime Remote Config updates: when a new template is

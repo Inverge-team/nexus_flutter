@@ -112,6 +112,9 @@ Every field of `NexusConfig` (all optional except `apiKey`):
 | `remoteConfigEnabled` | `bool` | `false` | Fetch Remote Config at startup/foreground. |
 | `remoteConfigRealtime` | `bool` | `false` | Re‑fetch config live on publish (needs a realtime connection). |
 | `remoteConfigDefaults` | `Map<String,Object?>` | `{}` | In‑app default config values. |
+| `pushEnabled` | `bool` | `false` | Turn‑key push: auto permission + token registration + open tracking (needs Firebase config). |
+| `pushAutoRequestPermission` | `bool` | `true` | Ask for notification permission at init when push is enabled. |
+| `pushWebVapidKey` | `String?` | — | Web only — FCM VAPID public key for web push. |
 | `appVersion` | `String?` | — | App version reported with telemetry. |
 | `defaultProperties` | `Map<String,Object?>` | `{}` | Merged into every event/person context. |
 
@@ -493,77 +496,60 @@ answers, and `submit`/`close`. `NexusSurvey`/`NexusSurveyQuestion`/
 
 ## 16. Push notifications
 
-Nexus Push delivers notifications via **FCM** (Android), **APNs** (iOS) and
-**Web Push**, targeted by the same journey identity you already use — compose,
-segment, schedule, A/B test and track opens from the console.
+Nexus Push delivers notifications via **FCM** (Android/iOS) and **Web Push**,
+targeted by the same journey identity you already use — compose, segment,
+schedule, A/B test and track opens from the console.
 
-The SDK is **provider-agnostic and Firebase-free**: obtain the device push token
-with your own plugin (e.g. [`firebase_messaging`](https://pub.dev/packages/firebase_messaging))
-and hand it to Nexus. Nexus correlates it to the current user (`distinctId` +
-`deviceKey`) and relays it to the backend.
+### Turn-key: just enable it
 
-Access it as `context.nexus.push` or `Nexus.instance.push`.
-
-### Register a device token
+Set `pushEnabled: true` and the SDK does the rest — requests permission, gets the
+device token, registers it (correlated to the current user), re-registers on
+refresh, and reports notification opens for delivery/A-B outcomes. **No push code
+in your app.**
 
 ```dart
-import 'package:firebase_messaging/firebase_messaging.dart';
-
-// 1. Ask the OS for permission (via your push plugin).
-await FirebaseMessaging.instance.requestPermission();
-
-// 2. Get the token and register it with Nexus.
-final token = await FirebaseMessaging.instance.getToken();
-if (token != null) {
-  await Nexus.instance.push.registerToken(
-    token,
-    platform: PushPlatform.android, // or .ios / .web
-    // provider defaults to fcm on iOS/Android, webpush on web —
-    // pass PushProvider.apns if you register raw APNs tokens.
-  );
-}
-
-// 3. Re-register when the token rotates.
-FirebaseMessaging.instance.onTokenRefresh.listen((t) {
-  Nexus.instance.push.registerToken(t, platform: PushPlatform.android);
-});
+await Nexus.init(const NexusConfig(
+  apiKey: 'nxs_live_xxx',
+  pushEnabled: true,
+));
 ```
 
-> Call `registerToken` again **after `identify()`** if you want an existing
-> device attributed to the just-identified user.
+The only prerequisite is the standard Firebase config for your app (the same
+setup any FCM/OneSignal integration needs):
 
-### Track opens (delivery outcomes & A/B results)
+- **Android** — add `google-services.json` + the Google Services Gradle plugin.
+- **iOS** — add `GoogleService-Info.plist`, enable Push Notifications + Background
+  Modes, and upload your APNs key to the Firebase console.
+- **Web** — initialise Firebase yourself and pass `pushWebVapidKey:` in the config.
 
-Every Nexus campaign push carries a `nexus_campaign_id` in its `data` payload.
-Pass the notification's data to `reportOpen` when the user taps it — this powers
-open-rate and A/B outcomes in the console.
+That's it. Provider credentials, segments, campaigns, automations and A/B tests
+are managed in the **Push** section of the Nexus console.
 
-```dart
-// App opened from a terminated state by tapping a notification:
-final initial = await FirebaseMessaging.instance.getInitialMessage();
-if (initial != null) Nexus.instance.push.reportOpen(initial.data);
+> **Permission timing.** By default the OS prompt shows at init. To ask at a
+> better moment, set `pushAutoRequestPermission: false`, request it yourself, then
+> call `await Nexus.instance.push.start()` (or just wait for the next launch).
 
-// App opened from background by tapping a notification:
-FirebaseMessaging.onMessageOpenedApp.listen((m) {
-  Nexus.instance.push.reportOpen(m.data);
-});
-```
+### Advanced: bring your own token
 
-### Stop delivery (logout / uninstall)
+If you manage tokens yourself (a different messaging plugin, or raw APNs), skip
+`pushEnabled` and call the API directly via `context.nexus.push`:
 
 ```dart
-await Nexus.instance.push.unregister(); // defaults to the last registered token
+await Nexus.instance.push.registerToken(fcmToken, platform: PushPlatform.android);
+// pass provider: PushProvider.apns for raw APNs tokens
+Nexus.instance.push.reportOpen(message.data); // attributes the open
+await Nexus.instance.push.unregister();        // on logout
 ```
 
 | Method | Purpose |
 |---|---|
-| `registerToken(token, {platform, provider?, lang?})` | Register/refresh this device's push token, correlated to the journey identity. |
-| `reportOpen(Map<String,dynamic> data)` | Attribute an open (reads `nexus_campaign_id` from the payload). No-op otherwise. |
+| `start()` | Turn-key enable (runs automatically with `pushEnabled: true`). |
+| `registerToken(token, {platform, provider?, lang?})` | Register/refresh a device token, correlated to the journey identity. |
+| `reportOpen(Map<String,dynamic> data)` | Attribute an open (reads `nexus_campaign_id`). No-op otherwise. |
 | `unregister([token])` | Stop delivering to a token (defaults to the last registered). |
 
 `PushPlatform` is `ios` / `android` / `web`; `PushProvider` is `fcm` / `apns` /
-`webpush`. Provider credentials, segments, campaigns, automations and A/B tests
-are configured in the **Push** section of the Nexus console.
+`webpush`.
 
 ---
 

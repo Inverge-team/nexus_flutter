@@ -1,3 +1,9 @@
+import 'dart:async';
+
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
+
 import '../config.dart';
 import '../http_client.dart';
 import '../identity.dart';
@@ -9,12 +15,10 @@ enum PushPlatform { ios, android, web }
 /// The delivery provider a push token targets.
 enum PushProvider { fcm, apns, webpush }
 
-/// Nexus Push — register this device's push token so campaigns and automations
-/// can reach it, and report opens so the console shows delivery outcomes.
-///
-/// Nexus does not itself talk to FCM/APNs on the client; obtain the token with
-/// your push plugin (e.g. `firebase_messaging`) and hand it to
-/// [registerToken]. Feed notification payloads to [reportOpen] to attribute opens.
+/// Nexus Push. With `pushEnabled: true` this is fully turn-key — [start] runs at
+/// init and handles permission, token acquisition, registration, refresh and
+/// open-tracking for you. The manual methods ([registerToken]/[reportOpen]) stay
+/// available for BYO-token setups (e.g. raw APNs or your own messaging plugin).
 class NexusPush {
   NexusPush(this._http, this._id, this._cfg);
 
@@ -23,15 +27,57 @@ class NexusPush {
   final NexusConfig _cfg;
 
   String? _token;
+  StreamSubscription<String>? _refreshSub;
+  StreamSubscription<RemoteMessage>? _openSub;
 
-  /// The last token registered this launch (for [unregister] / [reportOpen]).
+  /// The last token registered this launch.
   String? get token => _token;
 
-  /// Register (or refresh) this device's push token. Correlates to the current
-  /// journey identity (distinctId/deviceKey), so targeting by user works.
-  ///
-  /// [provider] defaults to `fcm` on iOS/Android (the common Firebase setup) and
-  /// `webpush` on web — pass `PushProvider.apns` if you register raw APNs tokens.
+  /// Turn-key enable: permission → token → register → refresh + open handlers.
+  /// Called automatically when `pushEnabled` is set. Safe to call again; every
+  /// failure is caught and logged so push can never break the app.
+  Future<void> start() async {
+    try {
+      final platform = _detectPlatform();
+      if (platform == null) {
+        NexusLog.info('push: platform not supported for FCM — skipping');
+        return;
+      }
+      if (!await _ensureFirebase(platform)) return;
+
+      final messaging = FirebaseMessaging.instance;
+      if (_cfg.pushAutoRequestPermission) {
+        final settings = await messaging.requestPermission();
+        NexusLog.debug('push: permission ${settings.authorizationStatus.name}');
+      }
+
+      final token = platform == PushPlatform.web
+          ? await messaging.getToken(vapidKey: _cfg.pushWebVapidKey)
+          : await messaging.getToken();
+      if (token != null) {
+        await registerToken(token, platform: platform, provider: PushProvider.fcm);
+      }
+
+      await _refreshSub?.cancel();
+      _refreshSub = messaging.onTokenRefresh.listen(
+        (t) => registerToken(t, platform: platform, provider: PushProvider.fcm),
+      );
+
+      // Attribute the open that launched / foregrounded the app.
+      final initial = await messaging.getInitialMessage();
+      if (initial != null) await reportOpen(initial.data);
+      await _openSub?.cancel();
+      _openSub = FirebaseMessaging.onMessageOpenedApp.listen((m) => reportOpen(m.data));
+
+      NexusLog.info('push: enabled (${platform.name})');
+    } catch (e) {
+      NexusLog.warn('push: start failed — $e');
+    }
+  }
+
+  /// Register (or refresh) this device's push token, correlated to the journey
+  /// identity. Call this yourself only for BYO-token setups; `pushEnabled` does
+  /// it automatically.
   Future<void> registerToken(
     String token, {
     required PushPlatform platform,
@@ -62,14 +108,47 @@ class NexusPush {
     if (t == _token) _token = null;
   }
 
-  /// Report that a notification was opened. Pass the notification's `data` map —
-  /// if it carries `nexus_campaign_id` (Nexus stamps this on every campaign push)
-  /// the open is attributed, powering open-rate and A/B outcomes in the console.
+  /// Report a notification open. Reads `nexus_campaign_id` from the payload
+  /// (Nexus stamps it on every campaign push) to power open-rate + A/B outcomes.
+  /// With `pushEnabled` this is wired for you; call it manually only for BYO setups.
   Future<void> reportOpen(Map<String, dynamic> data) async {
     final campaignId = data['nexus_campaign_id'];
     if (campaignId is! String || _token == null) return;
     NexusLog.debug('push.reportOpen — campaign $campaignId');
     await _http.post('/partner/push/opened', {'campaignId': campaignId, 'token': _token});
+  }
+
+  /// Cancel the refresh/open listeners (called on Nexus dispose / re-init).
+  Future<void> dispose() async {
+    await _refreshSub?.cancel();
+    await _openSub?.cancel();
+  }
+
+  Future<bool> _ensureFirebase(PushPlatform platform) async {
+    if (Firebase.apps.isNotEmpty) return true;
+    if (platform == PushPlatform.web) {
+      NexusLog.warn('push: initialise Firebase yourself on web before enabling push');
+      return false;
+    }
+    try {
+      await Firebase.initializeApp(); // auto-configured on Android/iOS
+      return true;
+    } catch (e) {
+      NexusLog.warn('push: Firebase.initializeApp failed — $e');
+      return false;
+    }
+  }
+
+  PushPlatform? _detectPlatform() {
+    if (kIsWeb) return PushPlatform.web;
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        return PushPlatform.android;
+      case TargetPlatform.iOS:
+        return PushPlatform.ios;
+      default:
+        return null;
+    }
   }
 
   PushProvider _defaultProvider(PushPlatform p) =>
