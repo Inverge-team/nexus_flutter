@@ -43,4 +43,21 @@ abstract class NexusPlatform extends PlatformInterface {
   /// Return and clear native crashes persisted since the last launch. Each map:
   /// `{ type, message, stack (frames or string), platform, timestamp }`.
   Future<List<Map<String, Object?>>> takePendingCrashes() async => const [];
+
+  /// Post a notification from native code (used to render foreground pushes on
+  /// Android, since FCM does not draw one while the app is open). Returns `true`
+  /// if it was shown. No-op / `false` where unsupported. [payload] is stashed on
+  /// the tap intent and delivered back via [onNotificationTap].
+  Future<bool> showNotification({
+    required int id,
+    String? title,
+    String? body,
+    required String channelId,
+    required String channelName,
+    String? payload,
+  }) async => false;
+
+  /// Register a sink for taps on notifications posted via [showNotification].
+  /// Receives the decoded [payload] map so the caller can attribute the open.
+  void onNotificationTap(void Function(Map<String, dynamic> data) sink) {}
 }

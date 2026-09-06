@@ -4,8 +4,8 @@ import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import '../../nexus_platform_interface.dart';
 import '../config.dart';
 import '../http_client.dart';
 import '../identity.dart';
@@ -32,7 +32,6 @@ class NexusPush {
   StreamSubscription<String>? _refreshSub;
   StreamSubscription<RemoteMessage>? _openSub;
   StreamSubscription<RemoteMessage>? _fgSub;
-  FlutterLocalNotificationsPlugin? _local;
 
   /// The last token registered this launch.
   String? get token => _token;
@@ -133,9 +132,10 @@ class NexusPush {
     await _fgSub?.cancel();
   }
 
-  /// Make foreground pushes visible. iOS can present the banner natively; Android
-  /// never does, so we render a local notification for each `onMessage` and
-  /// attribute taps back through [reportOpen], exactly like a background open.
+  /// Make foreground pushes visible. iOS presents the banner natively via the
+  /// Firebase SDK; Android never does, so we post the notification through our
+  /// own native plugin (no third-party libraries) and attribute taps back
+  /// through [reportOpen], exactly like a background open.
   Future<void> _setupForegroundDisplay(PushPlatform platform, FirebaseMessaging messaging) async {
     if (platform == PushPlatform.ios) {
       // Ask iOS to show the banner/sound/badge itself while the app is open.
@@ -148,62 +148,27 @@ class NexusPush {
     }
     if (platform != PushPlatform.android) return;
 
-    final local = FlutterLocalNotificationsPlugin();
-    await local.initialize(
-      const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-      ),
-      onDidReceiveNotificationResponse: (resp) {
-        final payload = resp.payload;
-        if (payload != null) unawaited(reportOpen(_decodePayload(payload)));
-      },
-    );
-    // Pre-create the channel so notifications are never silently dropped (Android 8+).
-    final android = local.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-    await android?.createNotificationChannel(
-      AndroidNotificationChannel(
-        _cfg.pushAndroidChannelId,
-        _cfg.pushAndroidChannelName,
-        importance: Importance.high,
-      ),
-    );
-    _local = local;
+    // Taps on our native notification come back here → attribute the open.
+    NexusPlatform.instance.onNotificationTap((data) => unawaited(reportOpen(data)));
 
     await _fgSub?.cancel();
     _fgSub = FirebaseMessaging.onMessage.listen(_showForeground);
   }
 
-  /// Render one foreground message as a local notification (Android).
+  /// Render one foreground message as a native notification (Android).
   Future<void> _showForeground(RemoteMessage m) async {
-    final local = _local;
-    if (local == null) return;
     final n = m.notification;
     final title = n?.title ?? m.data['title'] as String?;
     final body = n?.body ?? m.data['body'] as String?;
     if (title == null && body == null) return; // data-only message — nothing to show
-    final details = AndroidNotificationDetails(
-      _cfg.pushAndroidChannelId,
-      _cfg.pushAndroidChannelName,
-      importance: Importance.high,
-      priority: Priority.high,
-      styleInformation: body == null ? null : BigTextStyleInformation(body),
-    );
-    await local.show(
-      m.hashCode,
-      title,
-      body,
-      NotificationDetails(android: details),
+    await NexusPlatform.instance.showNotification(
+      id: m.hashCode,
+      title: title,
+      body: body,
+      channelId: n?.android?.channelId ?? _cfg.pushAndroidChannelId,
+      channelName: _cfg.pushAndroidChannelName,
       payload: jsonEncode(m.data),
     );
-  }
-
-  Map<String, dynamic> _decodePayload(String raw) {
-    try {
-      final decoded = jsonDecode(raw);
-      return decoded is Map ? decoded.cast<String, dynamic>() : const {};
-    } catch (_) {
-      return const {};
-    }
   }
 
   Future<bool> _ensureFirebase(PushPlatform platform) async {

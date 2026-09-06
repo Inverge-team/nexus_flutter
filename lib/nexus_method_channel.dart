@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -13,6 +15,7 @@ class MethodChannelNexus extends NexusPlatform {
   final methodChannel = const MethodChannel('nexus');
 
   void Function(String recordingId, List<Object?> events)? _replaySink;
+  void Function(Map<String, dynamic> data)? _tapSink;
 
   @override
   Future<String?> getPlatformVersion() =>
@@ -78,6 +81,34 @@ class MethodChannelNexus extends NexusPlatform {
     }
   }
 
+  @override
+  Future<bool> showNotification({
+    required int id,
+    String? title,
+    String? body,
+    required String channelId,
+    required String channelName,
+    String? payload,
+  }) async {
+    try {
+      final ok = await methodChannel.invokeMethod<bool>('showNotification', {
+        'id': id,
+        'title': title,
+        'body': body,
+        'channelId': channelId,
+        'channelName': channelName,
+        'payload': payload,
+      });
+      return ok ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  void onNotificationTap(void Function(Map<String, dynamic> data) sink) =>
+      _tapSink = sink;
+
   Future<dynamic> _handleNative(MethodCall call) async {
     if (call.method == 'onReplayBatch') {
       final args = (call.arguments as Map);
@@ -85,7 +116,20 @@ class MethodChannelNexus extends NexusPlatform {
         args['recordingId'] as String,
         (args['events'] as List).cast<Object?>(),
       );
+    } else if (call.method == 'onNotificationTap') {
+      _tapSink?.call(_decode(call.arguments));
     }
     return null;
+  }
+
+  Map<String, dynamic> _decode(Object? raw) {
+    try {
+      if (raw is String) {
+        final d = jsonDecode(raw);
+        return d is Map ? d.cast<String, dynamic>() : const {};
+      }
+      if (raw is Map) return raw.cast<String, dynamic>();
+    } catch (_) {}
+    return const {};
   }
 }

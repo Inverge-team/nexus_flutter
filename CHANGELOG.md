@@ -1,10 +1,11 @@
 ## 1.0.5
 
 - Push: show notifications while the app is in the **foreground**. FCM never
-  draws one when the app is open — the SDK now renders it (native banner on iOS
-  via `setForegroundNotificationPresentationOptions`, a local notification on
-  Android via `flutter_local_notifications`), tap-attributed like a background
-  open. Configurable with `pushForegroundDisplay` (default `true`),
+  draws one when the app is open — the SDK now renders it using its **own native
+  code** (no third-party packages): iOS presents the banner via the Firebase SDK
+  (`setForegroundNotificationPresentationOptions`), Android posts the
+  notification from the Nexus plugin and forwards taps back for open
+  attribution. Configurable with `pushForegroundDisplay` (default `true`),
   `pushAndroidChannelId` and `pushAndroidChannelName`.
 
 ## 1.0.4
