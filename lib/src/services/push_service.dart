@@ -29,12 +29,38 @@ class NexusPush {
   final NexusConfig _cfg;
 
   String? _token;
+  String? _lang;
+  PushPlatform? _lastPlatform;
+  PushProvider? _lastProvider;
   StreamSubscription<String>? _refreshSub;
   StreamSubscription<RemoteMessage>? _openSub;
   StreamSubscription<RemoteMessage>? _fgSub;
 
   /// The last token registered this launch.
   String? get token => _token;
+
+  /// The language notifications are localized to for this device (or null).
+  String? get language => _lang;
+
+  /// Set the user's app language so campaigns are delivered localized to it
+  /// (e.g. `setLanguage('en')` / `setLanguage('ar')`). Call it at startup with
+  /// the app's current locale, and again whenever the user changes it. The code
+  /// is attached to the device token; a campaign with content for that language
+  /// is sent in it, otherwise the campaign's default language is used.
+  ///
+  /// Safe to call before or after push is enabled — if a token is already
+  /// registered it re-registers immediately; otherwise the language is applied
+  /// on the next registration.
+  Future<void> setLanguage(String lang) async {
+    final code = lang.trim();
+    if (code.isEmpty || code == _lang) return;
+    _lang = code;
+    final token = _token;
+    final platform = _lastPlatform;
+    if (token != null && platform != null) {
+      await registerToken(token, platform: platform, provider: _lastProvider);
+    }
+  }
 
   /// Turn-key enable: permission → token → register → refresh + open handlers.
   /// Called automatically when `pushEnabled` is set. Safe to call again; every
@@ -93,6 +119,9 @@ class NexusPush {
   }) async {
     _token = token;
     final resolved = provider ?? _defaultProvider(platform);
+    _lastPlatform = platform;
+    _lastProvider = resolved;
+    final effectiveLang = lang ?? _lang;
     NexusLog.debug('push.registerToken — ${platform.name}/${resolved.name} ${_mask(token)}');
     await _http.post('/partner/push/register', {
       'token': token,
@@ -101,7 +130,7 @@ class NexusPush {
       'distinctId': ?_id.distinctId,
       'deviceKey': _id.deviceKey,
       'appVersion': ?_cfg.appVersion,
-      'lang': ?lang,
+      'lang': ?effectiveLang,
       ..._id.wireContext,
     });
   }

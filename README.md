@@ -542,6 +542,23 @@ are managed in the **Push** section of the Nexus console.
 > better moment, set `pushAutoRequestPermission: false`, request it yourself, then
 > call `await Nexus.instance.push.start()` (or just wait for the next launch).
 
+### Localized notifications
+
+Tell Nexus the user's app language and campaigns are delivered localized to it —
+no per-user work in the console:
+
+```dart
+// At startup with the app's current locale, and again when the user changes it.
+await Nexus.instance.push.setLanguage('en'); // 'ar', 'fr', …
+```
+
+The language is attached to the device token. When you compose a campaign you add
+translations per language (console → Push → **Localize**) and pick a default
+language; each device receives the content for its language, falling back to the
+default (and then to the base message). `en-US` falls back to `en` automatically.
+Works before or after push is enabled — set it early and it's applied on the first
+registration.
+
 ### Advanced: bring your own token
 
 If you manage tokens yourself (a different messaging plugin, or raw APNs), skip
@@ -557,6 +574,7 @@ await Nexus.instance.push.unregister();        // on logout
 | Method | Purpose |
 |---|---|
 | `start()` | Turn-key enable (runs automatically with `pushEnabled: true`). |
+| `setLanguage(lang)` | Set the user's app language so campaigns are delivered localized to it. |
 | `registerToken(token, {platform, provider?, lang?})` | Register/refresh a device token, correlated to the journey identity. |
 | `reportOpen(Map<String,dynamic> data)` | Attribute an open (reads `nexus_campaign_id`). No-op otherwise. |
 | `unregister([token])` | Stop delivering to a token (defaults to the last registered). |

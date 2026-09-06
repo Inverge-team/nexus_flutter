@@ -1,3 +1,11 @@
+## 1.0.6
+
+- Push: localized notifications. `Nexus.instance.push.setLanguage('en')` attaches
+  the user's app language to the device token; campaigns composed with per-language
+  translations (console → Push → Localize) are delivered in each device's language,
+  falling back to the campaign default then the base message (`en-US` → `en`).
+  Works before or after push is enabled.
+
 ## 1.0.5
 
 - Push: show notifications while the app is in the **foreground**. FCM never
