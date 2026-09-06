@@ -31,7 +31,8 @@ a single user journey.
 15. [Surveys](#15-surveys)
 16. [Push notifications](#16-push-notifications)
 17. [In-app messages](#17-in-app-messages)
-18. [Lifecycle, flushing & disposal](#18-lifecycle-flushing--disposal)
+18. [Live Activities](#18-live-activities)
+19. [Lifecycle, flushing & disposal](#19-lifecycle-flushing--disposal)
 
 ---
 
@@ -688,7 +689,63 @@ yourself in `MaterialApp.builder`.
 
 ---
 
-## 18. Lifecycle, flushing & disposal
+## 18. Live Activities
+
+A live, updating view of an in-progress event — on the iOS Lock Screen / Dynamic
+Island (ActivityKit) and as an Android live ongoing notification — driven by one
+cross-platform API. Enable it:
+
+```dart
+await Nexus.init(const NexusConfig(apiKey: 'nxs_live_xxx', liveActivityEnabled: true));
+```
+
+**Drive it server-side** (recommended) from the console (**Live Activities**) or
+the Live Activity API — start / update / end by `activityId`. iOS receives
+ActivityKit push updates; Android receives a data message the SDK turns into a
+live notification. Nothing to call in the app for updates.
+
+**Or drive it locally:**
+
+```dart
+await Nexus.instance.liveActivity.start('order_42', 'DeliveryAttributes',
+    {'title': 'Order #42', 'status': 'Preparing', 'progress': 20});
+await Nexus.instance.liveActivity.update('order_42', {'status': 'On the way', 'progress': 60});
+await Nexus.instance.liveActivity.end('order_42');
+```
+
+The content-state maps to `title` / `subtitle` / `body` / `status` /
+`progress` (0–100) on both platforms.
+
+### iOS setup (Widget Extension)
+
+iOS renders the activity from a **Widget Extension** compiled into your app (an
+inherent iOS requirement — the same as OneSignal). One-time setup:
+
+1. Xcode → **File → New → Target → Widget Extension** (check *Include Live
+   Activity*), deployment target iOS 16.1+.
+2. Use the SDK's ready-made widget — copy
+   [`ios/NexusLiveActivityWidget/NexusLiveActivityWidget.swift`](ios/NexusLiveActivityWidget/NexusLiveActivityWidget.swift)
+   into the target. It renders `NexusLiveActivityAttributes`, so add the Nexus
+   SDK to the widget target (or share the attributes source with both targets).
+   Customize the SwiftUI freely.
+3. Add `NSSupportsLiveActivities = YES` to your app's `Info.plist` (and
+   `NSSupportsLiveActivitiesFrequentUpdates = YES` if you send frequent updates).
+
+The SDK manages the ActivityKit lifecycle and registers push-to-start (17.2+) +
+update tokens for you. For custom fields, define your own `ActivityAttributes`,
+manage ActivityKit yourself, and register tokens with
+`nexus.liveActivity.registerPushToStartToken(...)` /
+`registerActivity(...)`.
+
+### Android
+
+No widget — the SDK posts a live **ongoing notification** (progress / status)
+that updates in place and clears on end. Works in the foreground, background, and
+killed states (via the same data-message path as push).
+
+---
+
+## 19. Lifecycle, flushing & disposal
 
 ```dart
 await Nexus.instance.flush();   // flush all batched telemetry now

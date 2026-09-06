@@ -121,6 +121,91 @@ class MethodChannelNexus extends NexusPlatform {
   void onNotificationTap(void Function(Map<String, dynamic> data) sink) =>
       _tapSink = sink;
 
+  @override
+  Future<bool> showLiveActivity({
+    required int id,
+    required String channelId,
+    required String channelName,
+    String? title,
+    String? body,
+    String? subText,
+    int? progress,
+    bool indeterminate = false,
+    bool ongoing = true,
+    String? payload,
+  }) async {
+    try {
+      final ok = await methodChannel.invokeMethod<bool>('showLiveActivity', {
+        'id': id,
+        'channelId': channelId,
+        'channelName': channelName,
+        'title': title,
+        'body': body,
+        'subText': subText,
+        'progress': progress,
+        'indeterminate': indeterminate,
+        'ongoing': ongoing,
+        'payload': payload,
+      });
+      return ok ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<void> endLiveActivity(int id) async {
+    try {
+      await methodChannel.invokeMethod('endLiveActivity', {'id': id});
+    } catch (_) {}
+  }
+
+  void Function(Map<String, dynamic> info)? _laTokenSink;
+
+  @override
+  Future<void> liveActivityStart({
+    required String activityId,
+    required String activityType,
+    required Map<String, dynamic> contentState,
+    Map<String, dynamic>? attributes,
+  }) async {
+    try {
+      await methodChannel.invokeMethod('liveActivityStart', {
+        'activityId': activityId,
+        'activityType': activityType,
+        'contentState': contentState,
+        'attributes': attributes,
+      });
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> liveActivityUpdate({
+    required String activityId,
+    required Map<String, dynamic> contentState,
+  }) async {
+    try {
+      await methodChannel.invokeMethod('liveActivityUpdate', {'activityId': activityId, 'contentState': contentState});
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> liveActivityEnd({required String activityId, Map<String, dynamic>? finalContentState}) async {
+    try {
+      await methodChannel.invokeMethod('liveActivityEnd', {'activityId': activityId, 'contentState': finalContentState});
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> liveActivityObservePushToStart(String activityType) async {
+    try {
+      await methodChannel.invokeMethod('liveActivityObservePushToStart', {'activityType': activityType});
+    } catch (_) {}
+  }
+
+  @override
+  void onLiveActivityToken(void Function(Map<String, dynamic> info) sink) => _laTokenSink = sink;
+
   Future<dynamic> _handleNative(MethodCall call) async {
     if (call.method == 'onReplayBatch') {
       final args = (call.arguments as Map);
@@ -130,6 +215,8 @@ class MethodChannelNexus extends NexusPlatform {
       );
     } else if (call.method == 'onNotificationTap') {
       _tapSink?.call(_decode(call.arguments));
+    } else if (call.method == 'onLiveActivityToken') {
+      _laTokenSink?.call(_decode(call.arguments));
     }
     return null;
   }

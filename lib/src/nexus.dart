@@ -18,6 +18,7 @@ import 'services/flags_service.dart';
 import 'services/links_service.dart';
 import 'services/logs_service.dart';
 import 'services/inapp_service.dart';
+import 'services/live_activity_service.dart';
 import 'services/push_service.dart';
 import 'services/realtime_service.dart';
 import 'services/remote_config_service.dart';
@@ -76,6 +77,7 @@ class Nexus {
   late final NexusRemoteConfig remoteConfig;
   late final NexusPush push;
   late final NexusInApp inApp;
+  late final NexusLiveActivity liveActivity;
 
   /// Initialise the SDK once at startup. Re-calling disposes the previous
   /// instance and replaces it.
@@ -120,6 +122,8 @@ class Nexus {
     remoteConfig = NexusRemoteConfig(_http, _identity, config);
     push = NexusPush(_http, _identity, config);
     inApp = NexusInApp(_http, _identity, config);
+    liveActivity = NexusLiveActivity(_http, _identity);
+    if (config.liveActivityEnabled) liveActivity.wire();
     // Event-triggered surveys + in-app messages fire off analytics events;
     // in-app `event`-action buttons track events back.
     events.onTracked = (name) {

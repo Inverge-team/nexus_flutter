@@ -41,9 +41,42 @@ public class NexusPlugin: NSObject, FlutterPlugin {
       result(nil)
     case "takePendingCrashes":
       result(NexusCrashReporter.shared.takePending())
+    case "liveActivityStart", "liveActivityUpdate", "liveActivityEnd", "liveActivityObservePushToStart":
+      handleLiveActivity(call, result)
     default:
       result(FlutterMethodNotImplemented)
     }
+  }
+
+  private func handleLiveActivity(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
+    #if os(iOS)
+      if #available(iOS 16.1, *) {
+        let mgr = NexusLiveActivityManager.shared
+        mgr.onToken = { [weak channel] info in
+          DispatchQueue.main.async { channel?.invokeMethod("onLiveActivityToken", arguments: info) }
+        }
+        let args = call.arguments as? [String: Any] ?? [:]
+        switch call.method {
+        case "liveActivityStart":
+          mgr.start(
+            activityId: args["activityId"] as? String ?? "",
+            activityType: args["activityType"] as? String ?? "",
+            contentState: args["contentState"] as? [String: Any],
+            attributes: args["attributes"] as? [String: Any]
+          )
+        case "liveActivityUpdate":
+          mgr.update(activityId: args["activityId"] as? String ?? "", contentState: args["contentState"] as? [String: Any])
+        case "liveActivityEnd":
+          mgr.end(activityId: args["activityId"] as? String ?? "", contentState: args["contentState"] as? [String: Any])
+        case "liveActivityObservePushToStart":
+          mgr.observePushToStart(activityType: args["activityType"] as? String ?? "")
+        default: break
+        }
+        result(nil)
+        return
+      }
+    #endif
+    result(nil) // Live Activities unavailable — no-op
   }
 
   private func deviceInfo() -> [String: Any] {

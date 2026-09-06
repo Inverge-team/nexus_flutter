@@ -1,3 +1,17 @@
+## 1.4.0
+
+- Live Activities. One cross-platform API for a live, updating view of an
+  in-progress event. Enable with `liveActivityEnabled: true`.
+  - **iOS** — ActivityKit on the Lock Screen / Dynamic Island. A turn-key default
+    attributes type (`NexusLiveActivityAttributes`) + a copy-paste Widget
+    Extension template (`ios/NexusLiveActivityWidget/`); the SDK manages the
+    lifecycle and registers push-to-start (17.2+) + update tokens. Or manage your
+    own typed `ActivityAttributes` and register tokens via `nexus.liveActivity`.
+  - **Android** — a live ongoing notification (progress / status) the SDK renders
+    natively from the server's data message or via `nexus.liveActivity`.
+  - Drive it server-side from the dashboard / Live Activity API (start / update /
+    end), or locally with `nexus.liveActivity.start/update/end`.
+
 ## 1.3.0
 
 - In-app messages (OneSignal-style). Set `inAppEnabled: true`; the SDK fetches

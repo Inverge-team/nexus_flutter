@@ -94,6 +94,14 @@ class NexusPlugin :
                 result.success(all)
             }
             "showNotification" -> showNotification(call, result)
+            "showLiveActivity" -> showLiveActivity(call, result)
+            "endLiveActivity" -> {
+                val id = call.argument<Int>("id")
+                if (id != null) {
+                    (appContext?.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)?.cancel(id)
+                }
+                result.success(null)
+            }
             else -> result.notImplemented()
         }
     }
@@ -183,6 +191,60 @@ class NexusPlugin :
             } catch (_: Throwable) {
                 main.post { result.success(false) } // never break the channel
             }
+        }
+    }
+
+    /**
+     * Post/update an Android live ongoing notification — the Android equivalent
+     * of an iOS Live Activity. An updating ongoing notification with an optional
+     * progress bar; on Android 16+ it is styled as a promoted Live Update.
+     */
+    private fun showLiveActivity(call: MethodCall, result: Result) {
+        val ctx = appContext ?: return result.success(false)
+        try {
+            val id = call.argument<Int>("id") ?: return result.success(false)
+            val channelId = call.argument<String>("channelId") ?: "nexus_live"
+            val channelName = call.argument<String>("channelName") ?: "Live activities"
+            val title = call.argument<String>("title")
+            val body = call.argument<String>("body")
+            val subText = call.argument<String>("subText")
+            val progress = call.argument<Int>("progress")
+            val indeterminate = call.argument<Boolean>("indeterminate") ?: false
+            val ongoing = call.argument<Boolean>("ongoing") ?: true
+            val payload = call.argument<String>("payload")
+
+            val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                nm.getNotificationChannel(channelId) == null
+            ) {
+                nm.createNotificationChannel(
+                    NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_DEFAULT),
+                )
+            }
+
+            val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Notification.Builder(ctx, channelId)
+            } else {
+                @Suppress("DEPRECATION")
+                Notification.Builder(ctx)
+            }
+            builder.setContentTitle(title)
+                .setContentText(body)
+                .setSmallIcon(resolveSmallIcon(ctx, null))
+                .setOngoing(ongoing)
+                .setOnlyAlertOnce(true) // updates shouldn't buzz each time
+                .setContentIntent(activityIntent(ctx, id, payload, null, null))
+            if (subText != null) builder.setSubText(subText)
+            if (indeterminate) {
+                builder.setProgress(0, 0, true)
+            } else if (progress != null) {
+                builder.setProgress(100, progress.coerceIn(0, 100), false)
+            }
+
+            nm.notify(id, builder.build())
+            result.success(true)
+        } catch (_: Throwable) {
+            result.success(false)
         }
     }
 

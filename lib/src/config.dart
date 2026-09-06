@@ -27,6 +27,7 @@ class NexusConfig {
     this.inAppEnabled = false,
     this.inAppAutoShow = true,
     this.autoShowOverlay = true,
+    this.liveActivityEnabled = false,
     this.remoteConfigEnabled = false,
     this.remoteConfigRealtime = false,
     this.remoteConfigDefaults = const {},
@@ -146,6 +147,12 @@ class NexusConfig {
   /// (the SDK inserts them into the app's root overlay). Default `true`. Set
   /// `false` to mount `NexusSurveyOverlay` / `NexusInAppOverlay` yourself.
   final bool autoShowOverlay;
+
+  /// Enable Live Activities: iOS receives ActivityKit push updates (Lock Screen /
+  /// Dynamic Island); Android renders a live ongoing notification from the
+  /// server's data message. Drive them from the dashboard/API or via
+  /// `nexus.liveActivity`. Default `false`.
+  final bool liveActivityEnabled;
 
   /// Fetch Remote Config at startup (and on foreground). Read values via
   /// `nexus.remoteConfig.getString(...)` etc. Default `false` (billed per fetch

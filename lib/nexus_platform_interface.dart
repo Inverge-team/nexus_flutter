@@ -66,4 +66,52 @@ abstract class NexusPlatform extends PlatformInterface {
   /// Register a sink for taps on notifications posted via [showNotification].
   /// Receives the decoded [payload] map so the caller can attribute the open.
   void onNotificationTap(void Function(Map<String, dynamic> data) sink) {}
+
+  /// Post or update an Android live ongoing notification (the Android equivalent
+  /// of an iOS Live Activity). Uses a promoted Live Update (ProgressStyle) on
+  /// Android 16+, a normal ongoing notification with a progress bar otherwise.
+  /// Returns `true` if shown.
+  Future<bool> showLiveActivity({
+    required int id,
+    required String channelId,
+    required String channelName,
+    String? title,
+    String? body,
+    String? subText,
+    int? progress, // 0..100, null = no bar
+    bool indeterminate = false,
+    bool ongoing = true,
+    String? payload,
+  }) async => false;
+
+  /// Remove an Android live ongoing notification (end of a live activity).
+  Future<void> endLiveActivity(int id) async {}
+
+  // ---- iOS ActivityKit bridge (no-ops on other platforms) ----
+
+  /// Start an iOS Live Activity (ActivityKit) with the turn-key default
+  /// attributes. The native side registers its update token via [onLiveActivityToken].
+  Future<void> liveActivityStart({
+    required String activityId,
+    required String activityType,
+    required Map<String, dynamic> contentState,
+    Map<String, dynamic>? attributes,
+  }) async {}
+
+  /// Update a running iOS Live Activity's content state.
+  Future<void> liveActivityUpdate({
+    required String activityId,
+    required Map<String, dynamic> contentState,
+  }) async {}
+
+  /// End a running iOS Live Activity.
+  Future<void> liveActivityEnd({required String activityId, Map<String, dynamic>? finalContentState}) async {}
+
+  /// Observe push-to-start tokens (iOS 17.2+) for an activity type; tokens are
+  /// delivered via [onLiveActivityToken].
+  Future<void> liveActivityObservePushToStart(String activityType) async {}
+
+  /// Register a sink for ActivityKit tokens. `info` carries
+  /// `{ kind: 'pushToStart'|'update', activityType?, activityId?, token }`.
+  void onLiveActivityToken(void Function(Map<String, dynamic> info) sink) {}
 }

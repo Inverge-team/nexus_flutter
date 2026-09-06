@@ -10,6 +10,7 @@ import '../config.dart';
 import '../http_client.dart';
 import '../identity.dart';
 import '../logging.dart';
+import 'live_activity_service.dart';
 
 /// A notification open (or action-button tap) surfaced to the app.
 class NexusPushOpen {
@@ -327,6 +328,12 @@ Future<void> renderNexusAndroidNotification(
 }) async {
   final n = message.notification;
   final data = message.data;
+  // Live Activity data message → drive the live ongoing notification instead.
+  final la = parseLiveActivityPayload(data['nexus_live_activity']);
+  if (la != null) {
+    await renderNexusLiveActivity(la);
+    return;
+  }
   final title = (data['nexus_title'] ?? data['title'] ?? n?.title) as String?;
   final body = (data['nexus_body'] ?? data['body'] ?? n?.body) as String?;
   if (title == null && body == null) return; // silent data message — nothing to show
