@@ -26,6 +26,7 @@ class NexusConfig {
     this.surveyAutoShow = true,
     this.inAppEnabled = false,
     this.inAppAutoShow = true,
+    this.autoShowOverlay = true,
     this.remoteConfigEnabled = false,
     this.remoteConfigRealtime = false,
     this.remoteConfigDefaults = const {},
@@ -140,6 +141,11 @@ class NexusConfig {
   /// Automatically show a triggered in-app message (session start / event). Set
   /// `false` to present manually via `nexus.inApp.show(...)`. Default `true`.
   final bool inAppAutoShow;
+
+  /// Auto-mount the survey + in-app overlays without touching `MaterialApp.builder`
+  /// (the SDK inserts them into the app's root overlay). Default `true`. Set
+  /// `false` to mount `NexusSurveyOverlay` / `NexusInAppOverlay` yourself.
+  final bool autoShowOverlay;
 
   /// Fetch Remote Config at startup (and on foreground). Read values via
   /// `nexus.remoteConfig.getString(...)` etc. Default `false` (billed per fetch

@@ -441,8 +441,11 @@ MaterialApp(navigatorObservers: [NexusNavigatorObserver()]);
 
 ## 15. Surveys
 
-`nexus.surveys` — PostHog/AppsFlyer‑style in‑product surveys. Enable with
-`surveysEnabled: true` and mount the overlay in your `MaterialApp.builder`.
+`nexus.surveys` — PostHog/AppsFlyer‑style in‑product surveys. Just enable with
+`surveysEnabled: true` — the overlay is mounted automatically (no
+`MaterialApp.builder` needed; `autoShowOverlay`, default `true`).
+
+For a custom look, set `autoShowOverlay: false` and mount it yourself:
 
 ```dart
 MaterialApp(
@@ -653,19 +656,15 @@ triggered on session start or a custom analytics event. Compose them in the
 console (**In-app messages**); the SDK fetches, targets, caps frequency, renders,
 and reports impressions/clicks.
 
-**1. Enable it and mount the overlay.**
+**1. Just enable it.**
 
 ```dart
 await Nexus.init(const NexusConfig(apiKey: 'nxs_live_xxx', inAppEnabled: true));
-
-MaterialApp(
-  builder: (context, child) => NexusInAppOverlay(child: child!),
-  // ...
-)
 ```
 
-That's it — messages appear automatically. Event-triggered messages fire when you
-`track` the event:
+That's it — no `MaterialApp.builder` needed. The SDK mounts the overlay into your
+app's root automatically (`autoShowOverlay`, default `true`). Messages appear
+automatically; event-triggered ones fire when you `track` the event:
 
 ```dart
 context.nexus.events.track('checkout_started'); // shows a message triggered by it
@@ -682,9 +681,10 @@ Nexus.instance.inApp.onAction = (a) {
 ```
 
 Layouts: `modal`, `center`, `banner_top`, `banner_bottom`, `fullscreen`. Frequency
-is capped per device (`maxDisplays`) and optionally once per session. Bring your
-own UI with `NexusInAppOverlay(messageBuilder: ...)`, or present manually via
-`nexus.inApp.show(message)` (set `inAppAutoShow: false`).
+is capped per device (`maxDisplays`) and optionally once per session. Present
+manually via `nexus.inApp.show(message)` (set `inAppAutoShow: false`). For a custom
+look, set `autoShowOverlay: false` and mount `NexusInAppOverlay(messageBuilder: ...)`
+yourself in `MaterialApp.builder`.
 
 ---
 

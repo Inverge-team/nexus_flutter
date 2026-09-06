@@ -1,10 +1,11 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../nexus_platform_interface.dart';
 import 'config.dart';
+import 'overlay/nexus_auto_overlay.dart';
 import 'http_client.dart';
 import 'identity.dart';
 import 'identity_store.dart';
@@ -60,6 +61,8 @@ class Nexus {
   late final NexusHttp _http;
   late final NexusOutbox _outbox;
   NexusLifecycle? _lifecycle;
+  NexusAutoOverlay? _autoOverlay;
+  void _ensureOverlay() => _autoOverlay?.ensureAttached();
   bool _realtimeWasConnected = false;
   late final NexusSessions sessions;
   late final NexusEvents events;
@@ -124,6 +127,15 @@ class Nexus {
       inApp.onEvent(name);
     };
     inApp.onTrackEvent = (event) => events.track(event);
+
+    // Auto-mount the survey + in-app overlays (no MaterialApp.builder needed).
+    if (config.autoShowOverlay && (config.surveysEnabled || config.inAppEnabled)) {
+      _autoOverlay = NexusAutoOverlay();
+      WidgetsBinding.instance.addPostFrameCallback((_) => _autoOverlay?.ensureAttached());
+      // Re-attach lazily if a survey/message wants to show before/after a rebuild.
+      surveys.current.addListener(_ensureOverlay);
+      inApp.current.addListener(_ensureOverlay);
+    }
 
     if (config.autoCaptureErrors) {
       errors.install();
@@ -331,6 +343,9 @@ class Nexus {
     events.dispose();
     logs.dispose();
     replay.dispose();
+    surveys.current.removeListener(_ensureOverlay);
+    inApp.current.removeListener(_ensureOverlay);
+    _autoOverlay?.detach();
     surveys.dispose();
     inApp.dispose();
     remoteConfig.dispose();

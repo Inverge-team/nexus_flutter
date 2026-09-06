@@ -1,12 +1,15 @@
 ## 1.3.0
 
-- In-app messages (OneSignal-style). Set `inAppEnabled: true` and add
-  `NexusInAppOverlay` to your `MaterialApp.builder`; the SDK fetches active
-  messages, evaluates triggers (session start / custom event) + frequency caps
-  locally, and shows modals / banners / center / fullscreen with buttons.
+- In-app messages (OneSignal-style). Set `inAppEnabled: true`; the SDK fetches
+  active messages, evaluates triggers (session start / custom event) + frequency
+  caps locally, and shows modals / banners / center / fullscreen with buttons.
   Impressions and clicks are reported automatically; `nexus.inApp.onAction`
   surfaces button taps (dismiss / open URL / track event). Compose them in the
   console (In-app messages).
+- Overlays auto-mount. Surveys and in-app messages no longer require a
+  `MaterialApp.builder` — the SDK inserts the overlay into the app's root overlay
+  itself (`autoShowOverlay`, default `true`; set `false` to mount
+  `NexusSurveyOverlay` / `NexusInAppOverlay` yourself).
 
 ## 1.2.0
 
