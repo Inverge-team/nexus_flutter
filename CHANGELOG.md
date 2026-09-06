@@ -1,28 +1,24 @@
-## 1.0.7
+## 1.1.0
 
-- Push: subscriber tags. `push.setTag('role', 'client')` / `setTags({...})` /
-  `removeTag(key)` attach OneSignal-style key/value tags to the device token.
-  Build tag-condition segments in the console (Tag is / is not / contains /
-  exists / does not exist) to target campaigns and automations. Tags sync
-  immediately when a token exists, otherwise on the next registration.
+Push notifications, matured — foreground display, localization, and subscriber tags.
 
-## 1.0.6
-
-- Push: localized notifications. `Nexus.instance.push.setLanguage('en')` attaches
-  the user's app language to the device token; campaigns composed with per-language
-  translations (console → Push → Localize) are delivered in each device's language,
-  falling back to the campaign default then the base message (`en-US` → `en`).
-  Works before or after push is enabled.
-
-## 1.0.5
-
-- Push: show notifications while the app is in the **foreground**. FCM never
-  draws one when the app is open — the SDK now renders it using its **own native
-  code** (no third-party packages): iOS presents the banner via the Firebase SDK
-  (`setForegroundNotificationPresentationOptions`), Android posts the
-  notification from the Nexus plugin and forwards taps back for open
-  attribution. Configurable with `pushForegroundDisplay` (default `true`),
-  `pushAndroidChannelId` and `pushAndroidChannelName`.
+- **Foreground notifications.** FCM never draws a notification while the app is
+  open — the SDK now renders it using its **own native code** (no third-party
+  packages): iOS presents the banner via the Firebase SDK
+  (`setForegroundNotificationPresentationOptions`), Android posts the notification
+  from the Nexus plugin and forwards taps back for open attribution. Configurable
+  with `pushForegroundDisplay` (default `true`), `pushAndroidChannelId` and
+  `pushAndroidChannelName`.
+- **Localized notifications.** `push.setLanguage('en')` attaches the user's app
+  language to the device token; campaigns composed with per-language translations
+  (console → Push → Localize) are delivered in each device's language, falling back
+  to the campaign default then the base message (`en-US` → `en`). Works before or
+  after push is enabled.
+- **Subscriber tags.** `push.setTag('role', 'client')` / `setTags({...})` /
+  `removeTag(key)` / `clearTags()` attach OneSignal-style key/value tags to the
+  device token. Build tag-condition segments in the console (Tag is / is not /
+  contains / exists / does not exist) to target campaigns and automations. Tags
+  sync immediately when a token exists, otherwise on the next registration.
 
 ## 1.0.4
 
