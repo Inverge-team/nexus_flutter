@@ -11,6 +11,23 @@ import '../http_client.dart';
 import '../identity.dart';
 import '../logging.dart';
 
+/// A notification open (or action-button tap) surfaced to the app.
+class NexusPushOpen {
+  const NexusPushOpen({required this.data, this.campaignId, this.actionId, this.actionUrl});
+
+  /// The full data payload of the notification.
+  final Map<String, dynamic> data;
+
+  /// The Nexus campaign id, when the open was a campaign push.
+  final String? campaignId;
+
+  /// The id of the action button tapped, or null for a tap on the body.
+  final String? actionId;
+
+  /// The URL attached to the tapped action button, if any (open it yourself).
+  final String? actionUrl;
+}
+
 /// The device platform a push token belongs to.
 enum PushPlatform { ios, android, web }
 
@@ -37,6 +54,10 @@ class NexusPush {
   StreamSubscription<String>? _refreshSub;
   StreamSubscription<RemoteMessage>? _openSub;
   StreamSubscription<RemoteMessage>? _fgSub;
+
+  /// Called when a notification (or one of its action buttons) is opened. Set
+  /// this to route the user, or to handle an action button's `actionUrl`.
+  void Function(NexusPushOpen open)? onOpened;
 
   /// The last token registered this launch.
   String? get token => _token;
@@ -196,7 +217,14 @@ class NexusPush {
   /// (Nexus stamps it on every campaign push) to power open-rate + A/B outcomes.
   /// With `pushEnabled` this is wired for you; call it manually only for BYO setups.
   Future<void> reportOpen(Map<String, dynamic> data) async {
+    // Surface the open (incl. action button + url) to the app.
     final campaignId = data['nexus_campaign_id'];
+    onOpened?.call(NexusPushOpen(
+      data: data,
+      campaignId: campaignId is String ? campaignId : null,
+      actionId: data['nexus_action_id']?.toString(),
+      actionUrl: data['nexus_action_url']?.toString(),
+    ));
     if (campaignId is! String || _token == null) return;
     NexusLog.debug('push.reportOpen — campaign $campaignId');
     await _http.post('/partner/push/opened', {'campaignId': campaignId, 'token': _token});
@@ -232,20 +260,54 @@ class NexusPush {
     _fgSub = FirebaseMessaging.onMessage.listen(_showForeground);
   }
 
-  /// Render one foreground message as a native notification (Android).
+  /// Render one foreground message as a native notification (Android), honouring
+  /// the campaign's rich options (buttons, large/big/small icon, lockscreen
+  /// visibility, accent colour) carried in `nexus_options`.
   Future<void> _showForeground(RemoteMessage m) async {
     final n = m.notification;
     final title = n?.title ?? m.data['title'] as String?;
     final body = n?.body ?? m.data['body'] as String?;
     if (title == null && body == null) return; // data-only message — nothing to show
+    final opt = _parseOptions(m.data['nexus_options']);
+    final buttons = _parseButtons(opt['buttons']);
     await NexusPlatform.instance.showNotification(
       id: m.hashCode,
       title: title,
       body: body,
-      channelId: n?.android?.channelId ?? _cfg.pushAndroidChannelId,
+      channelId: opt['androidChannelId'] as String? ?? n?.android?.channelId ?? _cfg.pushAndroidChannelId,
       channelName: _cfg.pushAndroidChannelName,
       payload: jsonEncode(m.data),
+      largeIcon: opt['androidLargeIcon'] as String?,
+      bigPicture: (opt['androidBigPicture'] as String?) ?? n?.android?.imageUrl,
+      smallIcon: opt['androidSmallIcon'] as String?,
+      visibility: opt['androidVisibility'] as String?,
+      accentColor: opt['androidAccentColor'] as String?,
+      buttons: buttons,
     );
+  }
+
+  Map<String, dynamic> _parseOptions(Object? raw) {
+    if (raw is String && raw.isNotEmpty) {
+      try {
+        final d = jsonDecode(raw);
+        if (d is Map) return d.cast<String, dynamic>();
+      } catch (_) {}
+    }
+    return const {};
+  }
+
+  List<Map<String, String?>>? _parseButtons(Object? raw) {
+    if (raw is! List) return null;
+    final out = <Map<String, String?>>[];
+    for (final b in raw) {
+      if (b is Map) {
+        final id = b['id']?.toString();
+        final text = b['text']?.toString();
+        if (id == null || text == null) continue;
+        out.add({'id': id, 'text': text, 'icon': b['icon']?.toString(), 'url': b['url']?.toString()});
+      }
+    }
+    return out.isEmpty ? null : out;
   }
 
   Future<bool> _ensureFirebase(PushPlatform platform) async {

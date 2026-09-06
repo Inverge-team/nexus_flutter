@@ -55,6 +55,12 @@ abstract class NexusPlatform extends PlatformInterface {
     required String channelId,
     required String channelName,
     String? payload,
+    String? largeIcon,
+    String? bigPicture,
+    String? smallIcon,
+    String? visibility,
+    String? accentColor,
+    List<Map<String, String?>>? buttons,
   }) async => false;
 
   /// Register a sink for taps on notifications posted via [showNotification].

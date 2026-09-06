@@ -1,3 +1,12 @@
+## 1.2.0
+
+- Push: rich notifications. Campaigns composed with action buttons, Android large/
+  big/small icon + lockscreen visibility + accent colour, iOS badge/relevance/
+  interruption level/subtitle, and web icon/image/badge are honoured on delivery.
+  The Android foreground renderer draws them natively (downloads large-icon /
+  big-picture images, renders action buttons). New `push.onOpened` callback
+  surfaces the open — including which action button was tapped and its URL.
+
 ## 1.1.0
 
 Push notifications, matured — foreground display, localization, and subscriber tags.

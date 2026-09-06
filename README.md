@@ -577,6 +577,28 @@ tag-condition segments — *Tag `role` **is** `client`*, *`plan` **exists***, et
 campaigns or automations at them. Safe before or after push is enabled: tags sync
 immediately once a token exists, otherwise on the next registration.
 
+### Rich notifications & action buttons
+
+Compose the extras in the console (Push → new campaign → **Advanced options**) —
+they're delivered per platform, no app code required:
+
+- **Action buttons** (all platforms) — up to 3, each with an optional URL.
+- **Android** — large icon, big picture, small icon, accent colour, lockscreen
+  visibility (public / private / secret). The SDK renders these natively in the
+  foreground (no third-party packages); in the background FCM draws the icon /
+  big-picture / visibility itself.
+- **iOS** — badge count, relevance score, interruption level, subtitle.
+- **Web** — icon, image, badge, and action buttons.
+
+Handle taps (and action-button taps) with a single callback:
+
+```dart
+Nexus.instance.push.onOpened = (open) {
+  // open.campaignId, open.actionId (button tapped), open.actionUrl, open.data
+  if (open.actionUrl != null) launchUrl(Uri.parse(open.actionUrl!));
+};
+```
+
 ### Advanced: bring your own token
 
 If you manage tokens yourself (a different messaging plugin, or raw APNs), skip
@@ -595,6 +617,7 @@ await Nexus.instance.push.unregister();        // on logout
 | `setLanguage(lang)` | Set the user's app language so campaigns are delivered localized to it. |
 | `setTag(key, value)` / `setTags(map)` / `removeTag(key)` | Set/remove subscriber tags for segment targeting. |
 | `registerToken(token, {platform, provider?, lang?})` | Register/refresh a device token, correlated to the journey identity. |
+| `onOpened` (callback) | Notified when a notification / action button is opened (`campaignId`, `actionId`, `actionUrl`, `data`). |
 | `reportOpen(Map<String,dynamic> data)` | Attribute an open (reads `nexus_campaign_id`). No-op otherwise. |
 | `unregister([token])` | Stop delivering to a token (defaults to the last registered). |
 

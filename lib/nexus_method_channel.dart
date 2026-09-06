@@ -89,6 +89,12 @@ class MethodChannelNexus extends NexusPlatform {
     required String channelId,
     required String channelName,
     String? payload,
+    String? largeIcon,
+    String? bigPicture,
+    String? smallIcon,
+    String? visibility,
+    String? accentColor,
+    List<Map<String, String?>>? buttons,
   }) async {
     try {
       final ok = await methodChannel.invokeMethod<bool>('showNotification', {
@@ -98,6 +104,12 @@ class MethodChannelNexus extends NexusPlatform {
         'channelId': channelId,
         'channelName': channelName,
         'payload': payload,
+        'largeIcon': largeIcon,
+        'bigPicture': bigPicture,
+        'smallIcon': smallIcon,
+        'visibility': visibility,
+        'accentColor': accentColor,
+        'buttons': buttons,
       });
       return ok ?? false;
     } catch (_) {
