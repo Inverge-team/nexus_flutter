@@ -45,5 +45,12 @@ export 'src/surveys/survey_view.dart'
 export 'src/surveys/survey_overlay.dart'
     show NexusSurveyOverlay, NexusSurveyBuilder;
 
+// In-app messages (OneSignal-style).
+export 'src/services/inapp_service.dart' show NexusInApp;
+export 'src/inapp/inapp_models.dart'
+    show NexusInAppMessage, NexusInAppButton, NexusInAppAction;
+export 'src/inapp/inapp_view.dart' show NexusInAppView;
+export 'src/inapp/inapp_overlay.dart' show NexusInAppOverlay, NexusInAppBuilder;
+
 // Advanced: native platform surface (device info + replay capture).
 export 'nexus_platform_interface.dart' show NexusPlatform;

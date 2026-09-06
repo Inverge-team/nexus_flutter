@@ -16,6 +16,7 @@ import 'services/events_service.dart';
 import 'services/flags_service.dart';
 import 'services/links_service.dart';
 import 'services/logs_service.dart';
+import 'services/inapp_service.dart';
 import 'services/push_service.dart';
 import 'services/realtime_service.dart';
 import 'services/remote_config_service.dart';
@@ -71,6 +72,7 @@ class Nexus {
   late final NexusSurveys surveys;
   late final NexusRemoteConfig remoteConfig;
   late final NexusPush push;
+  late final NexusInApp inApp;
 
   /// Initialise the SDK once at startup. Re-calling disposes the previous
   /// instance and replaces it.
@@ -114,8 +116,14 @@ class Nexus {
     surveys = NexusSurveys(_http, _identity, config);
     remoteConfig = NexusRemoteConfig(_http, _identity, config);
     push = NexusPush(_http, _identity, config);
-    // Event-triggered surveys fire off analytics events.
-    events.onTracked = surveys.onEvent;
+    inApp = NexusInApp(_http, _identity, config);
+    // Event-triggered surveys + in-app messages fire off analytics events;
+    // in-app `event`-action buttons track events back.
+    events.onTracked = (name) {
+      surveys.onEvent(name);
+      inApp.onEvent(name);
+    };
+    inApp.onTrackEvent = (event) => events.track(event);
 
     if (config.autoCaptureErrors) {
       errors.install();
@@ -147,6 +155,11 @@ class Nexus {
     // Turn-key push: permission, token registration, refresh + open tracking.
     if (config.pushEnabled) {
       unawaited(push.start());
+    }
+
+    // Fetch in-app messages once the session is established (best-effort).
+    if (config.inAppEnabled) {
+      unawaited(inApp.fetch());
     }
 
     // Fetch remote config, and (optionally) subscribe to realtime updates.
@@ -191,8 +204,9 @@ class Nexus {
     }
     // Retry any telemetry that queued while offline/suspended.
     await _outbox.drain();
-    // Re-check for newly-eligible surveys.
+    // Re-check for newly-eligible surveys + in-app messages.
     if (config.surveysEnabled) unawaited(surveys.fetch());
+    if (config.inAppEnabled) unawaited(inApp.fetch());
     // Refresh remote config (values may have changed while backgrounded) and
     // re-arm the realtime subscription if realtime reconnected.
     if (config.remoteConfigEnabled) unawaited(remoteConfig.fetch());
@@ -318,6 +332,7 @@ class Nexus {
     logs.dispose();
     replay.dispose();
     surveys.dispose();
+    inApp.dispose();
     remoteConfig.dispose();
     unawaited(push.dispose());
     realtime.disconnect();

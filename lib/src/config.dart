@@ -24,6 +24,8 @@ class NexusConfig {
     this.replayCaptureNetwork = true,
     this.surveysEnabled = false,
     this.surveyAutoShow = true,
+    this.inAppEnabled = false,
+    this.inAppAutoShow = true,
     this.remoteConfigEnabled = false,
     this.remoteConfigRealtime = false,
     this.remoteConfigDefaults = const {},
@@ -130,6 +132,14 @@ class NexusConfig {
   /// ones on `events.track`). Set `false` to present surveys manually via
   /// `nexus.surveys.show(...)`. Default `true`.
   final bool surveyAutoShow;
+
+  /// Fetch in-app messages at startup (and on foreground) and show them via the
+  /// `NexusInAppOverlay`. Default `false` — opt in.
+  final bool inAppEnabled;
+
+  /// Automatically show a triggered in-app message (session start / event). Set
+  /// `false` to present manually via `nexus.inApp.show(...)`. Default `true`.
+  final bool inAppAutoShow;
 
   /// Fetch Remote Config at startup (and on foreground). Read values via
   /// `nexus.remoteConfig.getString(...)` etc. Default `false` (billed per fetch

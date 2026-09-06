@@ -1,3 +1,13 @@
+## 1.3.0
+
+- In-app messages (OneSignal-style). Set `inAppEnabled: true` and add
+  `NexusInAppOverlay` to your `MaterialApp.builder`; the SDK fetches active
+  messages, evaluates triggers (session start / custom event) + frequency caps
+  locally, and shows modals / banners / center / fullscreen with buttons.
+  Impressions and clicks are reported automatically; `nexus.inApp.onAction`
+  surfaces button taps (dismiss / open URL / track event). Compose them in the
+  console (In-app messages).
+
 ## 1.2.0
 
 - Push: rich notifications. Campaigns composed with action buttons, Android large/

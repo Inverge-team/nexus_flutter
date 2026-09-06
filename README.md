@@ -30,7 +30,8 @@ a single user journey.
 14. [Session replay](#14-session-replay)
 15. [Surveys](#15-surveys)
 16. [Push notifications](#16-push-notifications)
-17. [Lifecycle, flushing & disposal](#17-lifecycle-flushing--disposal)
+17. [In-app messages](#17-in-app-messages)
+18. [Lifecycle, flushing & disposal](#18-lifecycle-flushing--disposal)
 
 ---
 
@@ -645,7 +646,49 @@ await Nexus.instance.push.unregister();        // on logout
 
 ---
 
-## 17. Lifecycle, flushing & disposal
+## 17. In-app messages
+
+OneSignal-style in-app messages — modals and banners shown **inside** your app,
+triggered on session start or a custom analytics event. Compose them in the
+console (**In-app messages**); the SDK fetches, targets, caps frequency, renders,
+and reports impressions/clicks.
+
+**1. Enable it and mount the overlay.**
+
+```dart
+await Nexus.init(const NexusConfig(apiKey: 'nxs_live_xxx', inAppEnabled: true));
+
+MaterialApp(
+  builder: (context, child) => NexusInAppOverlay(child: child!),
+  // ...
+)
+```
+
+That's it — messages appear automatically. Event-triggered messages fire when you
+`track` the event:
+
+```dart
+context.nexus.events.track('checkout_started'); // shows a message triggered by it
+```
+
+**2. Handle button taps** (open URL / custom event / dismiss). Impressions and
+clicks are already tracked; `onAction` lets you act on them:
+
+```dart
+Nexus.instance.inApp.onAction = (a) {
+  // a.messageId, a.buttonId, a.action ('dismiss'|'url'|'event'), a.url, a.event
+  if (a.action == 'url' && a.url != null) launchUrl(Uri.parse(a.url!));
+};
+```
+
+Layouts: `modal`, `center`, `banner_top`, `banner_bottom`, `fullscreen`. Frequency
+is capped per device (`maxDisplays`) and optionally once per session. Bring your
+own UI with `NexusInAppOverlay(messageBuilder: ...)`, or present manually via
+`nexus.inApp.show(message)` (set `inAppAutoShow: false`).
+
+---
+
+## 18. Lifecycle, flushing & disposal
 
 ```dart
 await Nexus.instance.flush();   // flush all batched telemetry now
