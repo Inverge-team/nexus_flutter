@@ -504,8 +504,17 @@ schedule, A/B test and track opens from the console.
 
 Set `pushEnabled: true` and the SDK does the rest — requests permission, gets the
 device token, registers it (correlated to the current user), re-registers on
-refresh, and reports notification opens for delivery/A-B outcomes. **No push code
-in your app.**
+refresh, **shows notifications while the app is in the foreground**, and reports
+notification opens for delivery/A-B outcomes. **No push code in your app.**
+
+> **Why foreground matters.** FCM only draws a system notification when your app
+> is backgrounded or closed; while it's open in the foreground, nothing shows
+> unless the app renders it. The SDK handles that for you — a native banner on
+> iOS and a local notification on Android — so notifications appear whether the
+> app is open or not, tap-attributed just like a background open. Turn it off
+> with `pushForegroundDisplay: false` if you handle `onMessage` yourself; set the
+> Android channel with `pushAndroidChannelId` / `pushAndroidChannelName` (match
+> your server-side `android.notification.channel_id`).
 
 ```dart
 await Nexus.init(const NexusConfig(
@@ -517,7 +526,19 @@ await Nexus.init(const NexusConfig(
 The only prerequisite is the standard Firebase config for your app (the same
 setup any FCM/OneSignal integration needs):
 
-- **Android** — add `google-services.json` + the Google Services Gradle plugin.
+- **Android** — add `google-services.json` **and apply** the Google Services
+  Gradle plugin in `android/app/build.gradle(.kts)` (`id("com.google.gms.google-services")`),
+  not just declare it. Also enable **core library desugaring** (required by the
+  bundled foreground-notification support):
+
+  ```kotlin
+  android {
+    compileOptions { isCoreLibraryDesugaringEnabled = true }
+  }
+  dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+  }
+  ```
 - **iOS** — add `GoogleService-Info.plist`, enable Push Notifications + Background
   Modes, and upload your APNs key to the Firebase console.
 - **Web** — initialise Firebase yourself and pass `pushWebVapidKey:` in the config.

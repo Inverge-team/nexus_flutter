@@ -30,6 +30,9 @@ class NexusConfig {
     this.pushEnabled = false,
     this.pushAutoRequestPermission = true,
     this.pushWebVapidKey,
+    this.pushForegroundDisplay = true,
+    this.pushAndroidChannelId = 'nexus_default',
+    this.pushAndroidChannelName = 'Notifications',
     this.appVersion,
     this.defaultProperties = const {},
   });
@@ -146,6 +149,23 @@ class NexusConfig {
   /// Web only — the VAPID public key for FCM web push. Required to obtain a web
   /// token; ignored on iOS/Android.
   final String? pushWebVapidKey;
+
+  /// Display notifications while the app is in the **foreground**. FCM does not
+  /// draw a notification when the app is open — on Android nothing shows unless
+  /// the app renders it, and on iOS the banner is suppressed by default. With
+  /// this `true` (default) the SDK shows it for you: a native banner on iOS and
+  /// a local notification on Android, tap-attributed like a background open. Set
+  /// `false` if you handle `FirebaseMessaging.onMessage` yourself.
+  final bool pushForegroundDisplay;
+
+  /// Android channel id used for foreground notifications the SDK displays.
+  /// Match your server-side `android.notification.channel_id` to keep foreground
+  /// and background notifications on one channel. Default `nexus_default`.
+  final String pushAndroidChannelId;
+
+  /// Human-readable name for [pushAndroidChannelId], shown in Android system
+  /// settings. Default `Notifications`.
+  final String pushAndroidChannelName;
 
   final bool remoteConfigEnabled;
 
