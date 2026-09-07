@@ -132,7 +132,7 @@ class NexusReplay {
       if (_width != null) 'width': _width,
       if (_height != null) 'height': _height,
       ..._id.wireContext,
-    });
+    }, ephemeral: true); // bulky + best-effort: memory-capped, never persisted
     NexusLog.debug('replay: shipped ${events.length} events for $rec');
   }
 

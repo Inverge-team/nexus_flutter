@@ -72,7 +72,10 @@ class NexusErrors {
     // 1) Flutter framework errors (build/layout/paint, gesture callbacks, …).
     final prevFlutter = FlutterError.onError;
     FlutterError.onError = (details) {
-      capture(details.exception, details.stack, {'handled': false});
+      // Our reporting must never disrupt Flutter's own error handling.
+      try {
+        capture(details.exception, details.stack, {'handled': false});
+      } catch (_) {/* never let the reporter break error handling */}
       prevFlutter?.call(details);
     };
 
@@ -80,7 +83,9 @@ class NexusErrors {
     //    false lets the default handler still print to the console.
     final prevPlatform = PlatformDispatcher.instance.onError;
     PlatformDispatcher.instance.onError = (error, stack) {
-      capture(error, stack, {'handled': false});
+      try {
+        capture(error, stack, {'handled': false});
+      } catch (_) {/* never let the reporter break error handling */}
       return prevPlatform?.call(error, stack) ?? false;
     };
 

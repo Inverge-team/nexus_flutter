@@ -1,3 +1,15 @@
+## 1.4.1
+
+- Hardening: the SDK can never crash the host app.
+  - The telemetry outbox is now memory-capped (512 KB total) and drops the
+    oldest items under sustained pressure, so a burst of telemetry can no longer
+    grow the queue into an out-of-memory / main-thread-stall hazard.
+  - Bulky, best-effort payloads (session-replay batches) are held in memory and
+    delivered best-effort, but never persisted — keeping the durable store tiny
+    so it can't bloat local storage or its re-serialization stall the app.
+  - The global error handlers now swallow any failure inside our own reporting,
+    so error capture can never disrupt the app's error handling.
+
 ## 1.4.0
 
 - Live Activities. One cross-platform API for a live, updating view of an
