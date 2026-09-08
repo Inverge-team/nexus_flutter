@@ -144,9 +144,22 @@ class NexusVoice {
       });
       final legId = _id(myLeg?['leg']);
       final token = NexusJoinToken.tryParse(myLeg?['join'] as Map<String, dynamic>?);
+      if (myLeg?['error'] != null) {
+        NexusLog.warn('voice: backend could not provision media (${myLeg!['error']}) — '
+            'is LiveKit configured + reachable from the backend?');
+        return _fail(sessionId, myLeg['error'].toString());
+      }
       if (legId == null || token == null) return _fail(sessionId, 'join_failed');
+      NexusLog.info('voice: joining media room "${token.room}" at ${token.url}');
       _set(current.value!.copyWith(legId: legId, state: VoiceCallState.ringing));
-      await _engine.connect(token);
+      try {
+        await _engine.connect(token);
+      } catch (e) {
+        NexusLog.error('voice: media connect failed to ${token.url} — $e. '
+            'The DEVICE must be able to reach the media server; a private LAN IP is '
+            'unreachable over a tunnel / cellular / different Wi-Fi.');
+        return _fail(sessionId, 'media_connect_failed');
+      }
 
       // 2) Dial the remote party (app/pstn/sip).
       final callee = await _post('/partner/voice/legs', {
