@@ -92,6 +92,22 @@ class CallKitNativeHandler implements NexusCallKit {
     }
   }
 
+  /// The session id of a call the user has already ACCEPTED from the system UI
+  /// (e.g. accepting from a killed app, before Dart wired up). Null if none.
+  Future<String?> acceptedCallId() async {
+    try {
+      final dynamic calls = await FlutterCallkitIncoming.activeCalls();
+      if (calls is List) {
+        for (final dynamic c in calls) {
+          try {
+            if (c['isAccepted'] == true) return c['id'] as String?;
+          } catch (_) {/* not a map-like entry */}
+        }
+      }
+    } catch (_) {/* ignore */}
+    return null;
+  }
+
   void _onEvent(CallEvent? event) {
     switch (event) {
       case CallEventActionCallAccept(:final callKitParams):
@@ -117,4 +133,39 @@ class CallKitNativeHandler implements NexusCallKit {
     _sub?.cancel();
     _actions.close();
   }
+}
+
+/// Show the native incoming-call UI directly from a voice push payload. Safe to
+/// call from a background isolate (e.g. an FCM background handler) when the app
+/// is backgrounded or killed — it uses only the native plugin, not Nexus state.
+/// Register your FCM background handler and forward voice pushes to this:
+/// ```dart
+/// @pragma('vm:entry-point')
+/// Future<void> _bg(RemoteMessage m) async {
+///   if (m.data['type'] == 'incoming_call') await showNexusIncomingCall(m.data);
+/// }
+/// FirebaseMessaging.onBackgroundMessage(_bg);
+/// ```
+Future<void> showNexusIncomingCall(Map<dynamic, dynamic> data) async {
+  final id = (data['sessionId'] ?? data['session_id'] ?? '') as String? ?? '';
+  if (id.isEmpty) return;
+  final from = (data['from'] ?? data['callerNumber'] ?? '') as String? ?? '';
+  final name = data['callerName'] as String?;
+  try {
+    await FlutterCallkitIncoming.showCallkitIncoming(CallKitParams(
+      id: id,
+      nameCaller: name ?? (from.isNotEmpty ? from : 'Incoming call'),
+      appName: 'Nexus',
+      handle: from,
+      type: 0,
+      extra: {'from': from, 'callerName': ?name},
+      android: const AndroidParams(
+        isCustomNotification: true,
+        ringtonePath: 'system_ringtone_default',
+        backgroundColor: '#0955fa',
+        actionColor: '#4CAF50',
+      ),
+      ios: const IOSParams(handleType: 'generic', supportsHolding: true),
+    ));
+  } catch (_) {/* ignore */}
 }

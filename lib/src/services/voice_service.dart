@@ -57,6 +57,13 @@ class NexusVoice {
     if (_callKit is NoopCallKit) useCallKit(CallKitNativeHandler());
     await _registerDevice();
     _listenForIncoming();
+    // If the app was cold-launched by the user ACCEPTING an incoming call from
+    // the native UI (killed-app case), join it now.
+    final ck = _callKit;
+    if (ck is CallKitNativeHandler) {
+      final accepted = await ck.acceptedCallId();
+      if (accepted != null) unawaited(answer(accepted));
+    }
   }
 
   /// Ring instantly when the app is OPEN: listen on the identity's realtime room
@@ -83,17 +90,36 @@ class NexusVoice {
   }
 
   /// Register this device's push tokens so the control plane can ring it when
-  /// the app is backgrounded/killed. iOS uses the PushKit VoIP token; Android
-  /// uses the FCM token. Best-effort + silent.
+  /// the app is backgrounded/killed. Firebase often initialises AFTER Nexus.init,
+  /// so the FCM token isn't ready at first — we update when it rotates/arrives and
+  /// retry for a short while.
   Future<void> _registerDevice() async {
     try {
-      final voip = await _callKit.voipToken();
-      String? fcm;
-      try {
-        fcm = await FirebaseMessaging.instance.getToken();
-      } catch (_) {/* firebase not set up — Android ring unavailable */}
+      FirebaseMessaging.instance.onTokenRefresh.listen((t) => unawaited(registerPushToken(fcmToken: t)));
+    } catch (_) {/* firebase not ready to attach listener yet */}
+    for (var i = 0; i < 8; i++) {
+      if (await registerPushToken()) return;
+      await Future<void>.delayed(const Duration(seconds: 3));
+    }
+    NexusLog.warn('voice: no push token yet — background/killed incoming calls '
+        'will not ring until a token registers (call registerPushToken from your app).');
+  }
+
+  /// Register this device's push tokens (iOS VoIP / Android FCM) for incoming
+  /// calls when the app is backgrounded/killed. The SDK does this automatically;
+  /// call it yourself with a token if your app owns FCM/OneSignal and wants to
+  /// hand the SDK the exact token. Returns true once a token was registered.
+  Future<bool> registerPushToken({String? voipToken, String? fcmToken}) async {
+    try {
+      final voip = voipToken ?? await _callKit.voipToken();
+      var fcm = fcmToken;
+      if (fcm == null) {
+        try {
+          fcm = await FirebaseMessaging.instance.getToken();
+        } catch (_) {/* firebase not ready */}
+      }
+      if (voip == null && fcm == null) return false; // nothing yet — retry later
       final platform = Platform.isIOS ? 'ios' : (Platform.isAndroid ? 'android' : 'other');
-      if (voip == null && fcm == null) return;
       await _post('/partner/voice/devices', {
         'identityId': _identityId,
         'deviceId': _deviceId,
@@ -101,8 +127,11 @@ class NexusVoice {
         'voipToken': ?voip,
         'fcmToken': ?fcm,
       });
+      NexusLog.info('voice: device registered for incoming push (fcm=${fcm != null}, voip=${voip != null})');
+      return true;
     } catch (e) {
-      NexusLog.warn('voice: device registration failed (incoming-when-killed may not ring): $e');
+      NexusLog.warn('voice: device registration failed: $e');
+      return false;
     }
   }
 
@@ -219,8 +248,19 @@ class NexusVoice {
   }
 
   /// Answer the current inbound call — join as a WebRTC leg.
-  Future<void> answer() async {
-    final call = current.value;
+  Future<void> answer([String? sessionId]) async {
+    var call = current.value;
+    // Cold-launch accept: the app was killed and the user accepted from the
+    // native UI — reconstruct the inbound call from the session id in the event.
+    if (call == null && sessionId != null) {
+      call = NexusCall(
+        sessionId: sessionId,
+        direction: VoiceCallDirection.inbound,
+        state: VoiceCallState.connecting,
+        startedAt: DateTime.now(),
+      );
+      _set(call);
+    }
     if (call == null || call.direction != VoiceCallDirection.inbound) return;
     try {
       _set(call.copyWith(state: VoiceCallState.connecting));
@@ -239,7 +279,8 @@ class NexusVoice {
       _set(current.value!.copyWith(legId: legId));
       await _engine.connect(token);
       await _post('/partner/voice/legs/answer', {'legId': legId});
-      await _guard(() => _callKit.reportConnected(call.sessionId));
+      final sid = call.sessionId;
+      await _guard(() => _callKit.reportConnected(sid));
       _startPresence();
     } catch (e) {
       NexusLog.error('voice.answer failed: $e');
@@ -387,7 +428,7 @@ class NexusVoice {
   void _onCallKitAction(CallKitAction a) {
     switch (a.type) {
       case CallKitActionType.answer:
-        unawaited(answer());
+        unawaited(answer(a.callId)); // callId == sessionId (cold-launch safe)
         break;
       case CallKitActionType.decline:
         unawaited(decline());
