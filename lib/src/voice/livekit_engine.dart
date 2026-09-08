@@ -15,9 +15,12 @@ class LiveKitVoiceEngine implements NexusVoiceEngine {
   lk.EventsListener<lk.RoomEvent>? _listener;
   final _states = StreamController<VoiceEngineState>.broadcast();
   final _quality = StreamController<CallQualitySample>.broadcast();
+  final _remote = StreamController<int>.broadcast();
 
   @override
   Stream<VoiceEngineState> get states => _states.stream;
+  @override
+  Stream<int> get remoteCount => _remote.stream;
   @override
   Stream<CallQualitySample> get quality => _quality.stream;
 
@@ -29,11 +32,18 @@ class LiveKitVoiceEngine implements NexusVoiceEngine {
       roomOptions: const lk.RoomOptions(adaptiveStream: true, dynacast: true),
     );
     final listener = room.createListener();
+    void emitRemote() => _remote.add(room.remoteParticipants.length);
     listener
-      ..on<lk.RoomConnectedEvent>((_) => _states.add(VoiceEngineState.connected))
+      ..on<lk.RoomConnectedEvent>((_) {
+        _states.add(VoiceEngineState.connected);
+        emitRemote();
+      })
       ..on<lk.RoomReconnectingEvent>((_) => _states.add(VoiceEngineState.reconnecting))
       ..on<lk.RoomReconnectedEvent>((_) => _states.add(VoiceEngineState.connected))
       ..on<lk.RoomDisconnectedEvent>((_) => _states.add(VoiceEngineState.disconnected))
+      // Remote party joining/leaving is what makes the CALL connected/ended.
+      ..on<lk.ParticipantConnectedEvent>((_) => emitRemote())
+      ..on<lk.ParticipantDisconnectedEvent>((_) => emitRemote())
       ..on<lk.ParticipantConnectionQualityUpdatedEvent>((e) {
         // Emit a sample only for our own participant's quality.
         if (e.participant == room.localParticipant) {
@@ -44,6 +54,7 @@ class LiveKitVoiceEngine implements NexusVoiceEngine {
     _listener = listener;
     await room.connect(token.url, token.token);
     await room.localParticipant?.setMicrophoneEnabled(true);
+    emitRemote();
   }
 
   @override

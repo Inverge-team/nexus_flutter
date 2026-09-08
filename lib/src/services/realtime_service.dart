@@ -17,6 +17,7 @@ class NexusRealtime {
   final NexusIdentity _id;
   io.Socket? _socket;
   final Set<String> _rooms = {};
+  final Map<String, NexusEventHandler> _handlers = {};
 
   bool get isConnected => _socket?.connected ?? false;
 
@@ -40,6 +41,9 @@ class NexusRealtime {
           .setExtraHeaders({'x-api-key': _cfg.apiKey})
           .build(),
     );
+    // Register any handlers added before the socket existed; they persist across
+    // this socket's reconnects.
+    _handlers.forEach((event, handler) => socket.on(event, handler));
     socket.onConnect((_) {
       NexusLog.info('realtime connected (${socket.id})');
       for (final r in _rooms) {
@@ -112,9 +116,12 @@ class NexusRealtime {
     return completer.future;
   }
 
-  /// Listen for a server event.
-  void on(String event, NexusEventHandler handler) =>
-      _socket?.on(event, handler);
+  /// Listen for a server event. Persisted, so it survives (re)connects and works
+  /// even if called before the socket is open.
+  void on(String event, NexusEventHandler handler) {
+    _handlers[event] = handler;
+    _socket?.on(event, handler);
+  }
 
   /// Stop listening for a server event.
   void off(String event) => _socket?.off(event);

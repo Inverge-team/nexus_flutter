@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../http_client.dart';
 import '../identity.dart';
 import '../logging.dart';
+import 'realtime_service.dart';
 import '../voice/callkit.dart';
 import '../voice/callkit_native.dart';
 import '../voice/livekit_engine.dart';
@@ -19,10 +20,11 @@ import '../voice/voice_models.dart';
 /// a [ValueListenable]. Follows the SDK rule: it NEVER throws into the app —
 /// failures are logged and surface as a failed/ended call state.
 class NexusVoice {
-  NexusVoice(this._http, this._identity);
+  NexusVoice(this._http, this._identity, this._realtime);
 
   final NexusHttp _http;
   final NexusIdentity _identity;
+  final NexusRealtime _realtime;
 
   NexusVoiceEngine _engine = NoopVoiceEngine();
   NexusCallKit _callKit = NoopCallKit();
@@ -34,6 +36,7 @@ class NexusVoice {
   void Function(Map<String, dynamic> instruction)? onIvr;
 
   StreamSubscription<VoiceEngineState>? _engineSub;
+  StreamSubscription<int>? _remoteSub;
   StreamSubscription<CallQualitySample>? _qualitySub;
   StreamSubscription<CallKitAction>? _callKitSub;
   Timer? _presence;
@@ -53,6 +56,17 @@ class NexusVoice {
     if (_engine is NoopVoiceEngine) useEngine(LiveKitVoiceEngine());
     if (_callKit is NoopCallKit) useCallKit(CallKitNativeHandler());
     await _registerDevice();
+    _listenForIncoming();
+  }
+
+  /// Ring instantly when the app is OPEN: listen on the identity's realtime room
+  /// for `call.incoming`. (Killed-app ringing uses the VoIP/FCM push instead.)
+  void _listenForIncoming() {
+    _realtime.connect(); // idempotent — ensure the socket is up for voice
+    _realtime.on('call.incoming', (dynamic data) {
+      if (data is Map) unawaited(handleIncomingPush(Map<String, dynamic>.from(data)));
+    });
+    _realtime.join('voice:$_identityId');
   }
 
   /// Advanced override — replace the built-in WebRTC engine.
@@ -94,8 +108,10 @@ class NexusVoice {
 
   void _bindEngine() {
     _engineSub?.cancel();
+    _remoteSub?.cancel();
     _qualitySub?.cancel();
     _engineSub = _engine.states.listen(_onEngineState);
+    _remoteSub = _engine.remoteCount.listen(_onRemoteCount);
     _qualitySub = _engine.quality.listen(_reportQuality);
   }
 
@@ -316,14 +332,13 @@ class NexusVoice {
     final call = current.value;
     if (call == null) return;
     switch (s) {
+      // Our OWN connection to the room is up — but the call is only "connected"
+      // once the remote party is present (see _onRemoteCount). So stay ringing.
       case VoiceEngineState.connected:
-        if (!call.state.isTerminal) {
-          _set(call.copyWith(state: VoiceCallState.connected, connectedAt: call.connectedAt ?? DateTime.now()));
-          unawaited(_guard(() => _callKit.reportConnected(call.sessionId)));
-        }
+      case VoiceEngineState.connecting:
         break;
       case VoiceEngineState.reconnecting:
-        _set(call.copyWith(state: VoiceCallState.reconnecting));
+        if (call.state.isActive) _set(call.copyWith(state: VoiceCallState.reconnecting));
         break;
       case VoiceEngineState.failed:
         _fail(call.sessionId, 'media_failed');
@@ -331,11 +346,30 @@ class NexusVoice {
       case VoiceEngineState.disconnected:
         if (call.state.isActive) {
           _set(call.copyWith(state: VoiceCallState.ended, endReason: 'disconnected'));
+          unawaited(_guard(() => _callKit.reportEnded(call.sessionId)));
           _teardown();
         }
         break;
-      case VoiceEngineState.connecting:
-        break;
+    }
+  }
+
+  /// The remote party joined (n>0) or left (n==0). This is what makes the call
+  /// "connected" — for outbound it means the callee answered; for inbound it
+  /// means the caller is there.
+  void _onRemoteCount(int n) {
+    final call = current.value;
+    if (call == null || call.state.isTerminal) return;
+    if (n > 0) {
+      if (call.state != VoiceCallState.connected && call.state != VoiceCallState.onHold) {
+        _set(call.copyWith(state: VoiceCallState.connected, connectedAt: call.connectedAt ?? DateTime.now()));
+        unawaited(_guard(() => _callKit.reportConnected(call.sessionId)));
+      }
+    } else if (call.connectedAt != null && call.state.isActive) {
+      // The other party left an established call → end it.
+      _set(call.copyWith(state: VoiceCallState.ended, endReason: 'remote_left'));
+      unawaited(_guard(_engine.disconnect));
+      unawaited(_guard(() => _callKit.reportEnded(call.sessionId)));
+      _teardown();
     }
   }
 
@@ -416,6 +450,7 @@ class NexusVoice {
 
   void dispose() {
     _engineSub?.cancel();
+    _remoteSub?.cancel();
     _qualitySub?.cancel();
     _callKitSub?.cancel();
     _presence?.cancel();
