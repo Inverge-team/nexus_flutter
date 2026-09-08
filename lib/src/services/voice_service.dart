@@ -82,6 +82,7 @@ class NexusVoice {
           unawaited(handleIncomingPush(Map<String, dynamic>.from(m.data)));
         }
       });
+      FirebaseMessaging.instance.onTokenRefresh.listen((t) => unawaited(registerPushToken(fcmToken: t)));
       _fcmWired = true;
       NexusLog.debug('voice: FCM incoming-call handlers wired');
     } catch (e) {
@@ -117,10 +118,9 @@ class NexusVoice {
   /// so the FCM token isn't ready at first — we update when it rotates/arrives and
   /// retry for a short while.
   Future<void> _registerDevice() async {
-    try {
-      FirebaseMessaging.instance.onTokenRefresh.listen((t) => unawaited(registerPushToken(fcmToken: t)));
-    } catch (_) {/* firebase not ready to attach listener yet */}
-    for (var i = 0; i < 8; i++) {
+    // Retry until the PLATFORM-APPROPRIATE token is available (Firebase often
+    // initialises after Nexus.init, so the FCM token isn't ready immediately).
+    for (var i = 0; i < 12; i++) {
       if (await registerPushToken()) return;
       await Future<void>.delayed(const Duration(seconds: 3));
     }
@@ -134,20 +134,28 @@ class NexusVoice {
   /// hand the SDK the exact token. Returns true once a token was registered.
   Future<bool> registerPushToken({String? voipToken, String? fcmToken}) async {
     try {
-      final voip = voipToken ?? await _callKit.voipToken();
+      final ios = Platform.isIOS;
+      // iOS rings via APNs VoIP (PushKit); Android via FCM. Only use the token
+      // that platform actually uses, and treat an empty token as absent.
+      var voip = ios ? (voipToken ?? await _callKit.voipToken()) : null;
+      if (voip != null && voip.isEmpty) voip = null;
       var fcm = fcmToken;
-      if (fcm == null) {
+      if (fcm == null && !ios) {
         try {
           fcm = await FirebaseMessaging.instance.getToken();
           _wireFcmHandlers(); // firebase is ready — auto-handle incoming pushes
-        } catch (_) {/* firebase not ready */}
+        } catch (_) {/* firebase not ready — retry */}
       }
-      if (voip == null && fcm == null) return false; // nothing yet — retry later
-      final platform = Platform.isIOS ? 'ios' : (Platform.isAndroid ? 'android' : 'other');
+      if (fcm != null && fcm.isEmpty) fcm = null;
+
+      // Not done until we have the platform's real token → keep retrying.
+      final haveToken = ios ? voip != null : fcm != null;
+      if (!haveToken) return false;
+
       await _post('/partner/voice/devices', {
         'identityId': _identityId,
         'deviceId': _deviceId,
-        'platform': platform,
+        'platform': ios ? 'ios' : (Platform.isAndroid ? 'android' : 'other'),
         'voipToken': ?voip,
         'fcmToken': ?fcm,
       });
