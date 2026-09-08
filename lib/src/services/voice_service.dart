@@ -129,7 +129,11 @@ class NexusVoice {
         startedAt: DateTime.now(),
         metadata: metadata,
       ));
-      await _guard(() => _callKit.reportOutgoing(callId: sessionId, handle: to, displayName: displayName));
+      // NOTE: we deliberately do NOT start a native OUTGOING call here. On Android
+      // a self-managed outgoing ConnectionService can auto-end and echo back an
+      // "ended" event that would tear down a healthy call; a foreground outbound
+      // call is driven by the app's own UI + the media engine. CallKit is used for
+      // INCOMING calls (the killed-app ringer), where it is essential.
 
       // 1) This device's WebRTC leg → join the media room.
       final myLeg = await _post('/partner/voice/legs', {
@@ -230,7 +234,7 @@ class NexusVoice {
 
   Future<void> hangup() async {
     final call = current.value;
-    if (call == null) return;
+    if (call == null || call.state.isTerminal) return;
     await _guard(_engine.disconnect);
     if (call.legId != null) {
       await _post('/partner/voice/legs/hangup', {'legId': call.legId, 'reason': 'hangup'});
