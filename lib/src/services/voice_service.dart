@@ -1,11 +1,15 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
 import '../http_client.dart';
 import '../identity.dart';
 import '../logging.dart';
 import '../voice/callkit.dart';
+import '../voice/callkit_native.dart';
+import '../voice/livekit_engine.dart';
 import '../voice/voice_engine.dart';
 import '../voice/voice_models.dart';
 
@@ -37,17 +41,55 @@ class NexusVoice {
   String get _identityId => _identity.distinctId ?? _identity.deviceKey;
   String get _deviceId => _identity.deviceKey;
 
-  /// Register the media transport (e.g. a livekit_client adapter).
+  bool _initialised = false;
+
+  /// Turnkey setup — called automatically when `voiceEnabled`. Wires the SDK's
+  /// BUILT-IN WebRTC engine + native call UI (CallKit/ConnectionService) and
+  /// registers this device for incoming-call push so calls ring even when the
+  /// app is killed. Developers do NOT call this.
+  Future<void> init() async {
+    if (_initialised) return;
+    _initialised = true;
+    if (_engine is NoopVoiceEngine) useEngine(LiveKitVoiceEngine());
+    if (_callKit is NoopCallKit) useCallKit(CallKitNativeHandler());
+    await _registerDevice();
+  }
+
+  /// Advanced override — replace the built-in WebRTC engine.
   void useEngine(NexusVoiceEngine engine) {
     _engine = engine;
     _bindEngine();
   }
 
-  /// Register the native call UI + VoIP push integration.
+  /// Advanced override — replace the built-in native call UI.
   void useCallKit(NexusCallKit callKit) {
     _callKit = callKit;
     _callKitSub?.cancel();
     _callKitSub = _callKit.actions.listen(_onCallKitAction);
+  }
+
+  /// Register this device's push tokens so the control plane can ring it when
+  /// the app is backgrounded/killed. iOS uses the PushKit VoIP token; Android
+  /// uses the FCM token. Best-effort + silent.
+  Future<void> _registerDevice() async {
+    try {
+      final voip = await _callKit.voipToken();
+      String? fcm;
+      try {
+        fcm = await FirebaseMessaging.instance.getToken();
+      } catch (_) {/* firebase not set up — Android ring unavailable */}
+      final platform = Platform.isIOS ? 'ios' : (Platform.isAndroid ? 'android' : 'other');
+      if (voip == null && fcm == null) return;
+      await _post('/partner/voice/devices', {
+        'identityId': _identityId,
+        'deviceId': _deviceId,
+        'platform': platform,
+        'voipToken': ?voip,
+        'fcmToken': ?fcm,
+      });
+    } catch (e) {
+      NexusLog.warn('voice: device registration failed (incoming-when-killed may not ring): $e');
+    }
   }
 
   void _bindEngine() {
@@ -87,6 +129,7 @@ class NexusVoice {
         startedAt: DateTime.now(),
         metadata: metadata,
       ));
+      await _guard(() => _callKit.reportOutgoing(callId: sessionId, handle: to, displayName: displayName));
 
       // 1) This device's WebRTC leg → join the media room.
       final myLeg = await _post('/partner/voice/legs', {

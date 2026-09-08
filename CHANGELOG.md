@@ -1,19 +1,19 @@
 ## 1.5.0
 
-- **Nexus Voice (CPaaS calling).** Enable with `voiceEnabled: true`, then use
-  `nexus.voice`:
-  - `placeCall(to:, type:)` (app-to-app, PSTN or SIP), `answer()`, `decline()`,
-    `hangup()`, `setMuted()`, `setSpeakerphone()`, `setHold()`, `sendDtmf()`.
+- **Nexus Voice (CPaaS calling) — turnkey.** Set `voiceEnabled: true` and call;
+  the SDK bundles everything (WebRTC media, native CallKit/ConnectionService UI,
+  VoIP/FCM incoming-call push registration). No adapters to write.
+  - `nexus.voice`: `placeCall(to:, type:)` (app-to-app, PSTN or SIP), plus
+    `setMuted`/`setSpeakerphone`/`setHold`/`sendDtmf`/`hangup`; `answer`/`decline`.
   - Live call state via `nexus.voice.current` (`ValueListenable<NexusCall?>`) —
-    a state machine mirroring the server (ringing/connected/onHold/…), plus live
-    MOS/quality.
-  - Incoming calls: `handleIncomingPush(data)` from your FCM/VoIP handler.
-  - Pluggable media + native call UI — register a WebRTC engine
-    (`useEngine`, e.g. a `livekit_client` adapter) and CallKit/ConnectionService
-    (`useCallKit`). The base package stays dependency-light; see README for the
-    ready-to-drop-in adapters.
-  - Follows the never-crash rule: all failures are swallowed and surface as a
-    failed/ended call state, never a thrown exception.
+    mirrors the server state machine (ringing/connected/onHold/…) with live MOS.
+  - **Incoming calls ring the native screen even when the app is closed** — the
+    SDK registers the device's VoIP/FCM token and the Nexus backend pushes the
+    ring; Accept/Decline/mute/hold from the system UI are wired automatically.
+  - Bundles `livekit_client` + `flutter_callkit_incoming` internally. One-time
+    OS setup only (iOS VoIP background mode + APNs key in console); see README.
+  - Never-crash rule: all media/native/push failures surface as a failed/ended
+    call state, never a thrown exception.
 
 ## 1.4.1
 

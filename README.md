@@ -759,86 +759,63 @@ re‑fetches surveys/remote‑config, and reconnects realtime.
 
 ## Nexus Voice (calling)
 
-Turn on with `voiceEnabled: true`, then drive calls through `nexus.voice`. The
-core is transport-agnostic: register a **WebRTC engine** (the media) and,
-optionally, **CallKit** (the native call UI). This keeps the base package small
-and lets any transport slot in.
+Turnkey CPaaS calling — **just enable the flag**. The SDK bundles the WebRTC
+media engine and the native call UI (CallKit on iOS, a full-screen call /
+ConnectionService on Android) and registers this device for incoming-call push.
+Developers place and control calls; they never wire a media engine, CallKit, or
+push adapters.
 
 ```dart
 await Nexus.init(const NexusConfig(apiKey: 'nxs_…', voiceEnabled: true));
 
-// Wire the media engine + native UI once (adapters below).
-Nexus.instance.voice.useEngine(LiveKitVoiceEngine());
-Nexus.instance.voice.useCallKit(FlutterCallKit());
+final v = Nexus.instance.voice;
 
-// Place a call — to another Nexus identity, a phone number, or a SIP URI.
-await Nexus.instance.voice.placeCall(to: 'pilot_42');                  // app↔app
-await Nexus.instance.voice.placeCall(to: '+15551234567',
-    type: VoiceEndpointType.pstn, callerId: '+15550001111');          // PSTN
+// Place a call — another Nexus identity (app↔app), a phone number, or a SIP URI.
+await v.placeCall(to: 'pilot_42');                                    // app↔app
+await v.placeCall(to: '+15551234567', type: VoiceEndpointType.pstn); // PSTN
 
-// React to call state (ringing → connected → ended) + live quality.
+// Drive your UI from the live call state (ringing → connected → ended) + MOS.
 ValueListenableBuilder<NexusCall?>(
-  valueListenable: Nexus.instance.voice.current,
-  builder: (_, call, __) => call == null
-      ? const SizedBox.shrink()
-      : Text('${call.state.name} · MOS ${call.quality?.mos ?? '—'}'),
+  valueListenable: v.current,
+  builder: (_, call, __) => /* your in-call UI */ ...,
 );
 
 // In-call controls
-await Nexus.instance.voice.setMuted(true);
-await Nexus.instance.voice.setHold(true);
-await Nexus.instance.voice.sendDtmf('1');
-await Nexus.instance.voice.hangup();
-
-// Incoming (from your FCM/VoIP push handler):
-Nexus.instance.voice.handleIncomingPush(pushData);   // shows the native ringer
-// answer/decline come from the CallKit UI, or call them directly:
-await Nexus.instance.voice.answer();
+await v.setMuted(true);
+await v.setSpeakerphone(true);
+await v.setHold(true);
+await v.sendDtmf('1');
+await v.hangup();
 ```
 
-### Media engine adapter (livekit_client)
+### Incoming calls (including when the app is closed)
 
-Add `livekit_client` to your app, then:
+Incoming calls ring the **native** call screen even when the app is backgrounded
+or killed — the SDK registers each device's VoIP/FCM token and the Nexus backend
+pushes the ring. When the user taps **Accept** on the system UI, the SDK answers
+and connects automatically; **Decline**/**End**/mute/hold from the system UI are
+handled too. You write no calling code for this.
 
-```dart
-import 'package:livekit_client/livekit_client.dart' as lk;
-import 'package:nexus_flutter/nexus.dart';
+You call `Nexus.instance.voice.handleIncomingPush(data)` only if you want to
+drive the ringer from your own data-message handler; the bundled native layer
+already handles the standard VoIP path.
 
-class LiveKitVoiceEngine implements NexusVoiceEngine {
-  lk.Room? _room;
-  final _states = StreamController<VoiceEngineState>.broadcast();
-  final _quality = StreamController<CallQualitySample>.broadcast();
-  @override Stream<VoiceEngineState> get states => _states.stream;
-  @override Stream<CallQualitySample> get quality => _quality.stream;
+### One-time platform setup (OS requirements, not code)
 
-  @override
-  Future<void> connect(NexusJoinToken t) async {
-    final room = lk.Room();
-    room.createListener()
-      ..on<lk.RoomConnectedEvent>((_) => _states.add(VoiceEngineState.connected))
-      ..on<lk.RoomReconnectingEvent>((_) => _states.add(VoiceEngineState.reconnecting))
-      ..on<lk.RoomDisconnectedEvent>((_) => _states.add(VoiceEngineState.disconnected));
-    await room.connect(t.url, t.token,
-        roomOptions: const lk.RoomOptions(adaptiveStream: true));
-    await room.localParticipant?.setMicrophoneEnabled(true);
-    _room = room;
-  }
-  @override Future<void> disconnect() async { await _room?.disconnect(); _room = null; }
-  @override Future<void> setMuted(bool m) async =>
-      _room?.localParticipant?.setMicrophoneEnabled(!m);
-  @override Future<void> setSpeakerphone(bool on) async =>
-      _room != null ? lk.Hardware.instance.setSpeakerphoneOn(on) : null;
-  @override Future<void> sendDtmf(String d) async { /* send via data channel / SIP INFO */ }
-}
-```
+These are OS-level capabilities the app must declare — unavoidable for any VoIP
+app, and all you need to do:
 
-### Native call UI adapter (flutter_callkit_incoming)
+- **iOS**: enable the **Voice over IP** + **Remote notifications** background
+  modes, add the **Push Notifications** capability, and upload your **APNs key**
+  in the Nexus console (Push settings). PushKit + CallKit are handled by the SDK.
+- **Android**: FCM is already configured for `firebase_messaging`; the SDK shows
+  the full-screen incoming-call notification. Add the `USE_FULL_SCREEN_INTENT`
+  permission on Android 14+.
 
-Add `flutter_callkit_incoming`; map its events to `CallKitAction`s and forward
-your APNs PushKit / FCM VoIP token via `voipToken()`. On iOS also enable the
-**Voice over IP** background mode + PushKit; on Android a foreground service +
-`ConnectionService`. The SDK reports incoming/connected/ended to the OS; the
-system UI's answer/decline/mute buttons flow back through `actions`.
+### Advanced (optional)
 
-> The control plane, call state machine, quality reporting and billing all work
-> the moment these two adapters are registered — no Nexus code changes.
+Swap the built-ins if you must: `Nexus.instance.voice.useEngine(myEngine)` /
+`useCallKit(myCallKit)`. Almost no one needs this.
+
+> Per the SDK's never-crash rule, every media/native/push failure is swallowed
+> and surfaces as a `failed`/`ended` call state — it never throws into your app.

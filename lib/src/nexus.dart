@@ -127,6 +127,7 @@ class Nexus {
     liveActivity = NexusLiveActivity(_http, _identity);
     if (config.liveActivityEnabled) liveActivity.wire();
     voice = NexusVoice(_http, _identity);
+    if (config.voiceEnabled) unawaited(voice.init());
     // Event-triggered surveys + in-app messages fire off analytics events;
     // in-app `event`-action buttons track events back.
     events.onTracked = (name) {

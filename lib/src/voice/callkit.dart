@@ -15,6 +15,9 @@ abstract class NexusCallKit {
     bool hasVideo = false,
   });
 
+  /// Start a native OUTGOING call entry (configures the VoIP audio session).
+  Future<void> reportOutgoing({required String callId, required String handle, String? displayName});
+
   /// Tell the OS the call connected (starts its timer / active-call UI).
   Future<void> reportConnected(String callId);
 
@@ -46,6 +49,8 @@ class NoopCallKit implements NexusCallKit {
   Stream<CallKitAction> get actions => _actions.stream;
   @override
   Future<void> reportIncoming({required String callId, required String handle, String? displayName, bool hasVideo = false}) async {}
+  @override
+  Future<void> reportOutgoing({required String callId, required String handle, String? displayName}) async {}
   @override
   Future<void> reportConnected(String callId) async {}
   @override
