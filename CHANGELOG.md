@@ -1,3 +1,20 @@
+## 1.5.0
+
+- **Nexus Voice (CPaaS calling).** Enable with `voiceEnabled: true`, then use
+  `nexus.voice`:
+  - `placeCall(to:, type:)` (app-to-app, PSTN or SIP), `answer()`, `decline()`,
+    `hangup()`, `setMuted()`, `setSpeakerphone()`, `setHold()`, `sendDtmf()`.
+  - Live call state via `nexus.voice.current` (`ValueListenable<NexusCall?>`) —
+    a state machine mirroring the server (ringing/connected/onHold/…), plus live
+    MOS/quality.
+  - Incoming calls: `handleIncomingPush(data)` from your FCM/VoIP handler.
+  - Pluggable media + native call UI — register a WebRTC engine
+    (`useEngine`, e.g. a `livekit_client` adapter) and CallKit/ConnectionService
+    (`useCallKit`). The base package stays dependency-light; see README for the
+    ready-to-drop-in adapters.
+  - Follows the never-crash rule: all failures are swallowed and surface as a
+    failed/ended call state, never a thrown exception.
+
 ## 1.4.1
 
 - Hardening: the SDK can never crash the host app.

@@ -28,6 +28,7 @@ class NexusConfig {
     this.inAppAutoShow = true,
     this.autoShowOverlay = true,
     this.liveActivityEnabled = false,
+    this.voiceEnabled = false,
     this.remoteConfigEnabled = false,
     this.remoteConfigRealtime = false,
     this.remoteConfigDefaults = const {},
@@ -153,6 +154,12 @@ class NexusConfig {
   /// server's data message. Drive them from the dashboard/API or via
   /// `nexus.liveActivity`. Default `false`.
   final bool liveActivityEnabled;
+
+  /// Enable Nexus Voice (CPaaS calling). Exposes `nexus.voice` — place/answer
+  /// calls, in-call controls, DTMF, quality. Register a media engine (WebRTC)
+  /// and optionally CallKit to actually carry audio / show the native call UI.
+  /// Default `false`.
+  final bool voiceEnabled;
 
   /// Fetch Remote Config at startup (and on foreground). Read values via
   /// `nexus.remoteConfig.getString(...)` etc. Default `false` (billed per fetch
