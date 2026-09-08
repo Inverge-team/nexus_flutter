@@ -82,6 +82,18 @@ class NexusVoice {
           unawaited(handleIncomingPush(Map<String, dynamic>.from(m.data)));
         }
       });
+      // The user tapped the call notification (app was backgrounded/killed and the
+      // OS showed the high-priority call notification) — open the call screen.
+      FirebaseMessaging.onMessageOpenedApp.listen((m) {
+        if (m.data['type'] == 'incoming_call') {
+          unawaited(handleIncomingPush(Map<String, dynamic>.from(m.data)));
+        }
+      });
+      FirebaseMessaging.instance.getInitialMessage().then((m) {
+        if (m != null && m.data['type'] == 'incoming_call') {
+          unawaited(handleIncomingPush(Map<String, dynamic>.from(m.data)));
+        }
+      });
       FirebaseMessaging.instance.onTokenRefresh.listen((t) => unawaited(registerPushToken(fcmToken: t)));
       _fcmWired = true;
       NexusLog.debug('voice: FCM incoming-call handlers wired');
