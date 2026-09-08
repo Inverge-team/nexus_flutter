@@ -5,6 +5,9 @@
   VoIP/FCM incoming-call push registration). No adapters to write.
   - `nexus.voice`: `placeCall(to:, type:)` (app-to-app, PSTN or SIP), plus
     `setMuted`/`setSpeakerphone`/`setHold`/`sendDtmf`/`hangup`; `answer`/`decline`.
+  - **Built-in call screen** — a default full-screen call UI auto-shows on any
+    active call (outbound + incoming) with mute/speaker/hold/hangup and
+    accept/decline. Nothing to build; opt out with `autoShowOverlay: false`.
   - Live call state via `nexus.voice.current` (`ValueListenable<NexusCall?>`) —
     mirrors the server state machine (ringing/connected/onHold/…) with live MOS.
   - **Incoming calls ring the native screen even when the app is closed** — the

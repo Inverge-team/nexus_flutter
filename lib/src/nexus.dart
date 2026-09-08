@@ -137,7 +137,7 @@ class Nexus {
     inApp.onTrackEvent = (event) => events.track(event);
 
     // Auto-mount the survey + in-app overlays (no MaterialApp.builder needed).
-    if (config.autoShowOverlay && (config.surveysEnabled || config.inAppEnabled)) {
+    if (config.autoShowOverlay && (config.surveysEnabled || config.inAppEnabled || config.voiceEnabled)) {
       _autoOverlay = NexusAutoOverlay();
       WidgetsBinding.instance.addPostFrameCallback((_) => _autoOverlay?.ensureAttached());
       // Re-attach lazily if a survey/message wants to show before/after a rebuild.

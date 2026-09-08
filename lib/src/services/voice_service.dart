@@ -381,8 +381,14 @@ class NexusVoice {
     _presence?.cancel();
     _presence = null;
     unawaited(setPresence('ONLINE'));
-    // Keep `current` on the terminal state briefly so UIs can show the outcome;
-    // the app clears it or the next call replaces it.
+    // Keep `current` on the terminal state briefly so the call screen can show the
+    // outcome, then clear it so the overlay dismisses and the next call is clean.
+    final ended = current.value;
+    Timer(const Duration(seconds: 2), () {
+      if (current.value == ended && (current.value?.state.isTerminal ?? false)) {
+        current.value = null;
+      }
+    });
   }
 
   Future<void> _guard(Future<void> Function() fn) async {

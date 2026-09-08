@@ -54,6 +54,7 @@ export 'src/voice/voice_models.dart'
     show NexusCall, NexusJoinToken, CallQualitySample, VoiceCallState, VoiceCallStateX, VoiceEndpointType, VoiceCallDirection;
 export 'src/voice/voice_engine.dart' show NexusVoiceEngine, VoiceEngineState, NoopVoiceEngine;
 export 'src/voice/callkit.dart' show NexusCallKit, CallKitAction, CallKitActionType, NoopCallKit;
+export 'src/voice/voice_overlay.dart' show NexusVoiceOverlay;
 export 'src/inapp/inapp_models.dart'
     show NexusInAppMessage, NexusInAppButton, NexusInAppAction;
 export 'src/inapp/inapp_view.dart' show NexusInAppView;
