@@ -66,6 +66,29 @@ class NexusVoice {
     }
   }
 
+  bool _fcmWired = false;
+
+  /// Auto-handle incoming-call FCM pushes so the app needs ZERO push code:
+  /// - foreground: show the call via [handleIncomingPush];
+  /// - background/killed: the top-level [nexusVoiceFirebaseBackgroundHandler]
+  ///   shows the native ringer from the background isolate.
+  /// Registered once, as soon as Firebase is ready.
+  void _wireFcmHandlers() {
+    if (_fcmWired) return;
+    try {
+      FirebaseMessaging.onBackgroundMessage(nexusVoiceFirebaseBackgroundHandler);
+      FirebaseMessaging.onMessage.listen((m) {
+        if (m.data['type'] == 'incoming_call') {
+          unawaited(handleIncomingPush(Map<String, dynamic>.from(m.data)));
+        }
+      });
+      _fcmWired = true;
+      NexusLog.debug('voice: FCM incoming-call handlers wired');
+    } catch (e) {
+      NexusLog.warn('voice: FCM handler wiring failed: $e');
+    }
+  }
+
   /// Ring instantly when the app is OPEN: listen on the identity's realtime room
   /// for `call.incoming`. (Killed-app ringing uses the VoIP/FCM push instead.)
   void _listenForIncoming() {
@@ -116,6 +139,7 @@ class NexusVoice {
       if (fcm == null) {
         try {
           fcm = await FirebaseMessaging.instance.getToken();
+          _wireFcmHandlers(); // firebase is ready — auto-handle incoming pushes
         } catch (_) {/* firebase not ready */}
       }
       if (voip == null && fcm == null) return false; // nothing yet — retry later
@@ -496,5 +520,16 @@ class NexusVoice {
     _callKitSub?.cancel();
     _presence?.cancel();
     current.dispose();
+  }
+}
+
+/// Top-level Firebase background message handler the SDK registers automatically
+/// (must be top-level + vm:entry-point to run in the background isolate). Shows
+/// the native incoming-call ringer for Nexus Voice pushes; ignores everything
+/// else so it coexists with your other messages.
+@pragma('vm:entry-point')
+Future<void> nexusVoiceFirebaseBackgroundHandler(RemoteMessage message) async {
+  if (message.data['type'] == 'incoming_call') {
+    await showNexusIncomingCall(message.data);
   }
 }
