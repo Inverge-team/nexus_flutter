@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../nexus.dart';
 import '../services/voice_service.dart';
+import 'ivr.dart';
 import 'voice_models.dart';
 
 /// The SDK's built-in, auto-shown call screen. Renders full-screen whenever
@@ -61,6 +62,8 @@ class _NexusVoiceOverlayState extends State<NexusVoiceOverlay> {
             return _CallScreen(call: call);
           },
         ),
+        // In-app IVR menu (customer support). Mutually exclusive with a live call.
+        const NexusIvrOverlay(),
       ],
     );
   }

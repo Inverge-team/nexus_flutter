@@ -12,6 +12,7 @@ import '../logging.dart';
 import 'realtime_service.dart';
 import '../voice/callkit.dart';
 import '../voice/callkit_native.dart';
+import '../voice/ivr.dart';
 import '../voice/livekit_engine.dart';
 import '../voice/voice_engine.dart';
 import '../voice/voice_models.dart';
@@ -33,6 +34,10 @@ class NexusVoice {
 
   /// The current call (null when idle). Listen to drive your call UI.
   final ValueNotifier<NexusCall?> current = ValueNotifier<NexusCall?>(null);
+
+  /// The current in-app IVR menu session (null when not in a menu). Drives the
+  /// built-in [NexusIvrOverlay]; listen to build your own support-menu UI.
+  final ValueNotifier<NexusIvrSession?> ivr = ValueNotifier<NexusIvrSession?>(null);
 
   /// Optional hook for IVR prompts returned by DTMF (play/collect instructions).
   void Function(Map<String, dynamic> instruction)? onIvr;
@@ -444,6 +449,100 @@ class NexusVoice {
     _teardown();
   }
 
+  // ── In-app IVR (customer-support menu) ─────────────────────────────────────
+
+  /// Open an in-app IVR menu (a visual phone-tree) for [flowId] — e.g. a support
+  /// entry point built in the dashboard. The built-in [NexusIvrOverlay] renders
+  /// it; the caller taps keys to navigate, and the SDK auto-connects a real call
+  /// when the flow routes to an agent. Returns false if the menu couldn't start.
+  Future<bool> startIvr(String flowId) async {
+    try {
+      final res = await _post('/partner/voice/ivr/start', {'flowId': flowId});
+      final sid = res?['sessionId'] as String?;
+      final inst = res?['instruction'];
+      if (sid == null || inst is! Map) return false;
+      await _handleIvr(sid, Map<String, dynamic>.from(inst));
+      return true;
+    } catch (e) {
+      NexusLog.warn('voice.startIvr failed: $e');
+      return false;
+    }
+  }
+
+  /// Press a key in the current IVR menu.
+  Future<void> pressIvrKey(String digit) async {
+    final s = ivr.value;
+    if (s == null || s.status != NexusIvrStatus.active) return;
+    try {
+      final res = await _post('/partner/voice/ivr/input', {'sessionId': s.sessionId, 'digit': digit});
+      final inst = res?['instruction'];
+      if (inst is Map) await _handleIvr(s.sessionId, Map<String, dynamic>.from(inst));
+    } catch (e) {
+      NexusLog.warn('voice.pressIvrKey failed: $e');
+    }
+  }
+
+  /// Dismiss the IVR menu (the user backed out).
+  void endIvr() => ivr.value = null;
+
+  Future<void> _advanceIvr(String sessionId) async {
+    try {
+      final res = await _post('/partner/voice/ivr/advance', {'sessionId': sessionId});
+      final inst = res?['instruction'];
+      if (inst is Map) await _handleIvr(sessionId, Map<String, dynamic>.from(inst));
+    } catch (e) {
+      NexusLog.warn('voice.advanceIvr failed: $e');
+    }
+  }
+
+  Future<void> _handleIvr(String sessionId, Map<String, dynamic> inst) async {
+    switch (inst['action'] as String?) {
+      case 'play':
+        ivr.value = NexusIvrSession(sessionId: sessionId, prompt: inst['text'] as String?);
+        if (inst['hasNext'] == true) {
+          await Future<void>.delayed(const Duration(milliseconds: 1400)); // show the message, then step on
+          if (ivr.value?.sessionId == sessionId) await _advanceIvr(sessionId);
+        } else {
+          await Future<void>.delayed(const Duration(seconds: 2)); // terminal message
+          if (ivr.value?.sessionId == sessionId) ivr.value = ivr.value!.copyWith(status: NexusIvrStatus.ended, endedReason: 'ended');
+        }
+        break;
+      case 'collect':
+        ivr.value = NexusIvrSession(
+          sessionId: sessionId,
+          prompt: inst['text'] as String?,
+          awaitingInput: true,
+          maxDigits: (inst['maxDigits'] as num?)?.toInt() ?? 1,
+        );
+        break;
+      case 'connect':
+        ivr.value = NexusIvrSession(sessionId: sessionId, status: NexusIvrStatus.connecting);
+        final to = inst['to'] as String?;
+        if (to != null) {
+          await placeCall(to: to, type: _endpointFrom(inst['endpointType'] as String?));
+          ivr.value = null; // the call UI takes over
+        } else {
+          ivr.value = NexusIvrSession(sessionId: sessionId, status: NexusIvrStatus.ended, endedReason: 'error');
+        }
+        break;
+      case 'no_agents':
+        ivr.value = NexusIvrSession(sessionId: sessionId, prompt: 'All agents are busy right now. Please try again later.', status: NexusIvrStatus.ended, endedReason: 'no_agents');
+        break;
+      case 'voicemail':
+        // Voicemail recording needs the media plane's egress + storage (not yet
+        // enabled) — surface the prompt and end for now.
+        ivr.value = NexusIvrSession(sessionId: sessionId, prompt: (inst['text'] as String?) ?? 'Please try again later.', status: NexusIvrStatus.ended, endedReason: 'voicemail_unavailable');
+        break;
+      case 'hangup':
+      case 'ended':
+      default:
+        ivr.value = NexusIvrSession(sessionId: sessionId, status: NexusIvrStatus.ended, endedReason: 'ended');
+    }
+  }
+
+  VoiceEndpointType _endpointFrom(String? s) =>
+      s == 'pstn' ? VoiceEndpointType.pstn : s == 'sip' ? VoiceEndpointType.sip : VoiceEndpointType.app;
+
   // ── In-call controls ─────────────────────────────────────────────────────
 
   Future<void> hangup() async {
@@ -666,6 +765,7 @@ class NexusVoice {
     _presence?.cancel();
     _ringTimeout?.cancel();
     current.dispose();
+    ivr.dispose();
   }
 }
 
