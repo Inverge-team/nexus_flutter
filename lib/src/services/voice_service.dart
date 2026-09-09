@@ -228,12 +228,14 @@ class NexusVoice {
       // call is driven by the app's own UI + the media engine. CallKit is used for
       // INCOMING calls (the killed-app ringer), where it is essential.
 
-      // 1) This device's WebRTC leg → join the media room.
+      // 1) This device's WebRTC leg → join the media room. Carry our identity so
+      // the control plane can tell the callee WHO is calling (the ring's `from`).
       final myLeg = await _post('/partner/voice/legs', {
         'sessionId': sessionId,
         'role': 'caller',
         'endpointType': 'webrtc',
         'direction': 'outbound',
+        'identityId': _identityId,
       });
       final legId = _id(myLeg?['leg']);
       final token = NexusJoinToken.tryParse(myLeg?['join'] as Map<String, dynamic>?);

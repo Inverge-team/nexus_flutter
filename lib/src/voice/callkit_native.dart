@@ -30,11 +30,16 @@ class CallKitNativeHandler implements NexusCallKit {
     bool hasVideo = false,
   }) async {
     try {
+      // Android 14+ CallStyle REQUIRES a non-empty caller name (it builds a
+      // Person from it) — an empty name throws and the call UI never shows.
+      final name = (displayName != null && displayName.isNotEmpty)
+          ? displayName
+          : (handle.isNotEmpty ? handle : 'Incoming call');
       await FlutterCallkitIncoming.showCallkitIncoming(CallKitParams(
         id: callId,
-        nameCaller: displayName ?? handle,
+        nameCaller: name,
         appName: 'Nexus',
-        handle: handle,
+        handle: handle.isNotEmpty ? handle : name,
         type: hasVideo ? 1 : 0,
         missedCallNotification: const NotificationParams(
           showNotification: true,
@@ -155,12 +160,14 @@ Future<void> showNexusIncomingCall(Map<dynamic, dynamic> data) async {
   if (id.isEmpty) return;
   final from = (data['from'] ?? data['callerNumber'] ?? '') as String? ?? '';
   final name = data['callerName'] as String?;
+  // Android 14+ CallStyle requires a non-empty caller name or it throws.
+  final display = (name != null && name.isNotEmpty) ? name : (from.isNotEmpty ? from : 'Incoming call');
   try {
     await FlutterCallkitIncoming.showCallkitIncoming(CallKitParams(
       id: id,
-      nameCaller: name ?? (from.isNotEmpty ? from : 'Incoming call'),
+      nameCaller: display,
       appName: 'Nexus',
-      handle: from,
+      handle: from.isNotEmpty ? from : display,
       type: 0,
       extra: {'from': from, 'callerName': ?name},
       android: const AndroidParams(
