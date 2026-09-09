@@ -131,13 +131,38 @@ class NexusVoice {
   }
 
   /// Ring instantly when the app is OPEN: listen on the identity's realtime room
-  /// for `call.incoming`. (Killed-app ringing uses the VoIP/FCM push instead.)
+  /// for `call.incoming`. The same room also carries live status for calls we're
+  /// part of — a callee's decline reaches the caller (`call.rejected`/`call.busy`)
+  /// and a caller's cancel dismisses the callee's ring (`call.cancelled`) — so
+  /// neither side is left hanging until a timeout. (Killed-app ringing uses push.)
   void _listenForIncoming() {
     _realtime.connect(); // idempotent — ensure the socket is up for voice
     _realtime.on('call.incoming', (dynamic data) {
       if (data is Map) unawaited(handleIncomingPush(Map<String, dynamic>.from(data)));
     });
+    _realtime.on('call.rejected', (dynamic d) => _onRemoteEnd(d, VoiceCallState.rejected, 'declined'));
+    _realtime.on('call.busy', (dynamic d) => _onRemoteEnd(d, VoiceCallState.rejected, 'busy'));
+    _realtime.on('call.cancelled', (dynamic d) => _onRemoteEnd(d, VoiceCallState.cancelled, 'cancelled'));
     _realtime.join('voice:$_identityId');
+  }
+
+  /// End the current call in response to a remote status event (the other party
+  /// declined / was busy / cancelled) — only if it targets the call we're on.
+  void _onRemoteEnd(dynamic data, VoiceCallState state, String reason) {
+    if (data is! Map) return;
+    final sid = (data['sessionId'] ?? data['session_id']) as String?;
+    final call = current.value;
+    if (call == null || sid == null || call.sessionId != sid || call.state.isTerminal) return;
+    NexusLog.info('voice: remote $reason for ${call.sessionId}');
+    _ringTimeout?.cancel();
+    unawaited(_guard(_engine.disconnect));
+    // Clean up our own leg so the control-plane session ends promptly.
+    if (call.legId != null) {
+      unawaited(_post('/partner/voice/legs/hangup', {'legId': call.legId, 'reason': reason}));
+    }
+    unawaited(_guard(() => _callKit.reportEnded(call.sessionId))); // dismiss native ringer/ongoing UI
+    _set(call.copyWith(state: state, endReason: reason));
+    _teardown();
   }
 
   /// Advanced override — replace the built-in WebRTC engine.

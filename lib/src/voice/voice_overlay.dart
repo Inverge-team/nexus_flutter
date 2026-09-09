@@ -84,11 +84,15 @@ class _CallScreen extends StatelessWidget {
         return 'On hold';
       case VoiceCallState.reconnecting:
         return 'Reconnecting…';
-      case VoiceCallState.ended:
-      case VoiceCallState.failed:
       case VoiceCallState.rejected:
+        return call.endReason == 'busy' ? 'Busy' : 'Declined';
       case VoiceCallState.cancelled:
+        return 'Call cancelled';
       case VoiceCallState.timeout:
+        return 'No answer';
+      case VoiceCallState.failed:
+        return 'Call failed';
+      case VoiceCallState.ended:
         return 'Call ended';
       default:
         return '';
