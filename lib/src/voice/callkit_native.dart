@@ -157,6 +157,8 @@ class CallKitNativeHandler implements NexusCallKit {
 /// ```
 Future<void> showNexusIncomingCall(Map<dynamic, dynamic> data) async {
   final id = (data['sessionId'] ?? data['session_id'] ?? '') as String? ?? '';
+  // ignore: avoid_print
+  print('[NexusVoice] showNexusIncomingCall id="$id"');
   if (id.isEmpty) return;
   final from = (data['from'] ?? data['callerNumber'] ?? '') as String? ?? '';
   final name = data['callerName'] as String?;
@@ -181,5 +183,10 @@ Future<void> showNexusIncomingCall(Map<dynamic, dynamic> data) async {
       ),
       ios: const IOSParams(handleType: 'generic', supportsHolding: true),
     ));
-  } catch (_) {/* ignore */}
+    // ignore: avoid_print
+    print('[NexusVoice] showCallkitIncoming OK for id="$id"');
+  } catch (e, st) {
+    // ignore: avoid_print
+    print('[NexusVoice] showCallkitIncoming FAILED: $e\n$st');
+  }
 }

@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
+import '../background_dispatch.dart';
 import '../http_client.dart';
 import '../identity.dart';
 import '../logging.dart';
@@ -80,7 +81,9 @@ class NexusVoice {
   void _wireFcmHandlers() {
     if (_fcmWired) return;
     try {
-      FirebaseMessaging.onBackgroundMessage(nexusVoiceFirebaseBackgroundHandler);
+      // Single shared background handler — Voice + Push MUST NOT each register
+      // their own (Firebase keeps only the last one, dropping the other).
+      ensureNexusBackgroundHandler();
       FirebaseMessaging.onMessage.listen((m) {
         if (m.data['type'] == 'incoming_call') {
           unawaited(handleIncomingPush(Map<String, dynamic>.from(m.data)));
@@ -595,6 +598,10 @@ class NexusVoice {
 /// else so it coexists with your other messages.
 @pragma('vm:entry-point')
 Future<void> nexusVoiceFirebaseBackgroundHandler(RemoteMessage message) async {
+  // NOTE: this runs in a SEPARATE background isolate. NexusLog isn't configured
+  // here, so use print() (visible in logcat as I/flutter) for diagnostics.
+  // ignore: avoid_print
+  print('[NexusVoice] bg FCM handler fired — type=${message.data['type']} keys=${message.data.keys.toList()}');
   if (message.data['type'] == 'incoming_call') {
     await showNexusIncomingCall(message.data);
   }

@@ -6,6 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../nexus_platform_interface.dart';
+import '../background_dispatch.dart';
 import '../config.dart';
 import '../http_client.dart';
 import '../identity.dart';
@@ -157,7 +158,9 @@ class NexusPush {
       // notification natively (foreground AND background/killed) with full
       // options + action buttons. Register the background renderer.
       if (platform == PushPlatform.android && _cfg.pushForegroundDisplay) {
-        FirebaseMessaging.onBackgroundMessage(nexusPushBackgroundHandler);
+        // Single shared background handler — see ensureNexusBackgroundHandler.
+        // (Registering nexusPushBackgroundHandler directly would clobber Voice.)
+        ensureNexusBackgroundHandler();
       }
 
       final token = platform == PushPlatform.web
