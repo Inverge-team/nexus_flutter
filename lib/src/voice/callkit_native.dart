@@ -106,8 +106,6 @@ class CallKitNativeHandler implements NexusCallKit {
   Future<String?> acceptedCallId() async {
     try {
       final dynamic calls = await FlutterCallkitIncoming.activeCalls();
-      // ignore: avoid_print
-      print('[NexusVoice] activeCalls() → $calls');
       if (calls is List) {
         for (final dynamic c in calls) {
           try {
@@ -115,10 +113,7 @@ class CallKitNativeHandler implements NexusCallKit {
           } catch (_) {/* not a map-like entry */}
         }
       }
-    } catch (e) {
-      // ignore: avoid_print
-      print('[NexusVoice] activeCalls() failed: $e');
-    }
+    } catch (_) {/* ignore */}
     return null;
   }
 
@@ -162,8 +157,6 @@ class CallKitNativeHandler implements NexusCallKit {
 /// ```
 Future<void> showNexusIncomingCall(Map<dynamic, dynamic> data) async {
   final id = (data['sessionId'] ?? data['session_id'] ?? '') as String? ?? '';
-  // ignore: avoid_print
-  print('[NexusVoice] showNexusIncomingCall id="$id"');
   if (id.isEmpty) return;
   final from = (data['from'] ?? data['callerNumber'] ?? '') as String? ?? '';
   final name = data['callerName'] as String?;
@@ -188,10 +181,10 @@ Future<void> showNexusIncomingCall(Map<dynamic, dynamic> data) async {
       ),
       ios: const IOSParams(handleType: 'generic', supportsHolding: true),
     ));
+  } catch (e) {
+    // Background isolate — NexusLog isn't configured here; keep a minimal
+    // failure breadcrumb (visible in logcat as I/flutter) for field debugging.
     // ignore: avoid_print
-    print('[NexusVoice] showCallkitIncoming OK for id="$id"');
-  } catch (e, st) {
-    // ignore: avoid_print
-    print('[NexusVoice] showCallkitIncoming FAILED: $e\n$st');
+    print('[NexusVoice] showCallkitIncoming failed: $e');
   }
 }

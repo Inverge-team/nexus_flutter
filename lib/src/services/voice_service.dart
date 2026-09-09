@@ -650,10 +650,6 @@ class NexusVoice {
 /// else so it coexists with your other messages.
 @pragma('vm:entry-point')
 Future<void> nexusVoiceFirebaseBackgroundHandler(RemoteMessage message) async {
-  // NOTE: this runs in a SEPARATE background isolate. NexusLog isn't configured
-  // here, so use print() (visible in logcat as I/flutter) for diagnostics.
-  // ignore: avoid_print
-  print('[NexusVoice] bg FCM handler fired — type=${message.data['type']} keys=${message.data.keys.toList()}');
   if (message.data['type'] == 'incoming_call') {
     await showNexusIncomingCall(message.data);
   }

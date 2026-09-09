@@ -24,9 +24,6 @@ void ensureNexusBackgroundHandler() {
 /// Must be top-level + vm:entry-point to run in the background isolate.
 @pragma('vm:entry-point')
 Future<void> nexusUnifiedBackgroundHandler(RemoteMessage message) async {
-  // NOTE: separate isolate — NexusLog isn't configured here; use print().
-  // ignore: avoid_print
-  print('[NexusBG] handler fired — type=${message.data['type']} keys=${message.data.keys.toList()}');
   if (message.data['type'] == 'incoming_call') {
     await showNexusIncomingCall(message.data);
     return;
