@@ -201,14 +201,21 @@ class NexusVoice {
     VoiceEndpointType type = VoiceEndpointType.app,
     String? callerId,
     String? displayName,
+    String? callerDisplayName,
     bool record = false,
     Map<String, dynamic> metadata = const {},
   }) async {
     try {
+      // The name the CALLEE sees for us (rings + call screen). Rides in session
+      // metadata → the backend puts it in the ring payload as `callerName`.
+      final md = <String, dynamic>{
+        ...metadata,
+        if (callerDisplayName != null && callerDisplayName.isNotEmpty) 'callerName': callerDisplayName,
+      };
       final session = await _post('/partner/voice/calls', {
         'direction': 'outbound',
         'recordingMode': record ? 'mixed' : 'disabled',
-        if (metadata.isNotEmpty) 'metadata': metadata,
+        if (md.isNotEmpty) 'metadata': md,
       });
       final sessionId = _id(session?['session']);
       if (sessionId == null) return _fail(null, 'session_create_failed');
