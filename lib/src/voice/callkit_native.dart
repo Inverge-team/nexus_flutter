@@ -46,6 +46,10 @@ class CallKitNativeHandler implements NexusCallKit {
           ringtonePath: 'system_ringtone_default',
           backgroundColor: '#0955fa',
           actionColor: '#4CAF50',
+          // Show the full-screen incoming UI over the lock screen and treat it as
+          // a high-importance call (heads-up + screen wake), like WhatsApp.
+          isShowFullLockedScreen: true,
+          isImportant: true,
         ),
         ios: const IOSParams(handleType: 'generic', supportsHolding: true, supportsDTMF: true),
       ));
@@ -164,6 +168,9 @@ Future<void> showNexusIncomingCall(Map<dynamic, dynamic> data) async {
         ringtonePath: 'system_ringtone_default',
         backgroundColor: '#0955fa',
         actionColor: '#4CAF50',
+        // Full-screen incoming call over the lock screen, screen wake — WhatsApp-style.
+        isShowFullLockedScreen: true,
+        isImportant: true,
       ),
       ios: const IOSParams(handleType: 'generic', supportsHolding: true),
     ));

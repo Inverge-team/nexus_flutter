@@ -40,6 +40,10 @@ class NexusVoice {
   StreamSubscription<CallQualitySample>? _qualitySub;
   StreamSubscription<CallKitAction>? _callKitSub;
   Timer? _presence;
+  Timer? _ringTimeout;
+
+  /// How long an outbound call rings unanswered before it auto-ends (no answer).
+  static const Duration _ringTimeoutDuration = Duration(seconds: 45);
 
   String get _identityId => _identity.distinctId ?? _identity.deviceKey;
   String get _deviceId => _identity.deviceKey;
@@ -263,6 +267,7 @@ class NexusVoice {
       if (callee?['error'] != null) return _fail(sessionId, callee!['error'].toString());
 
       _startPresence();
+      _armRingTimeout(sessionId); // auto-end if the callee never answers
       return current.value;
     } catch (e) {
       NexusLog.error('voice.placeCall failed: $e');
@@ -278,14 +283,22 @@ class NexusVoice {
   Future<void> handleIncomingPush(Map<String, dynamic> data) async {
     final sessionId = (data['sessionId'] ?? data['session_id']) as String?;
     if (sessionId == null) return;
+    // Idempotent: the same call can arrive over BOTH realtime and FCM (foreground),
+    // or be re-delivered — don't reset an already-live call or re-ring.
+    final existing = current.value;
+    if (existing != null && existing.sessionId == sessionId && !existing.state.isTerminal) return;
     final from = (data['from'] ?? data['callerNumber'] ?? '') as String;
     final name = data['callerName'] as String?;
+    // The backend's callee placeholder leg — lets a decline BEFORE we answer
+    // reach the control plane. Replaced by this device's media leg on answer.
+    final ringLegId = (data['legId'] ?? data['leg_id']) as String?;
     _set(NexusCall(
       sessionId: sessionId,
       direction: VoiceCallDirection.inbound,
       state: VoiceCallState.ringing,
       remoteAddress: from,
       remoteName: name,
+      legId: ringLegId,
       startedAt: DateTime.now(),
     ));
     await _guard(() => _callKit.reportIncoming(callId: sessionId, handle: from, displayName: name));
@@ -411,6 +424,26 @@ class NexusVoice {
     _presence = Timer.periodic(const Duration(seconds: 30), (_) => beat());
   }
 
+  /// Auto-end an outbound call that is never answered (callee never joins the
+  /// media room), so the caller isn't left ringing forever. Cancelled the moment
+  /// the remote party connects.
+  void _armRingTimeout(String sessionId) {
+    _ringTimeout?.cancel();
+    _ringTimeout = Timer(_ringTimeoutDuration, () {
+      final call = current.value;
+      if (call == null || call.sessionId != sessionId) return;
+      if (call.connectedAt != null || call.state.isTerminal) return; // answered or already gone
+      NexusLog.info('voice: outbound call timed out (no answer)');
+      unawaited(_guard(_engine.disconnect));
+      if (call.legId != null) {
+        unawaited(_post('/partner/voice/legs/hangup', {'legId': call.legId, 'reason': 'no_answer'}));
+      }
+      unawaited(_guard(() => _callKit.reportEnded(sessionId)));
+      _set(call.copyWith(state: VoiceCallState.timeout, endReason: 'no_answer'));
+      _teardown();
+    });
+  }
+
   // ── Engine + CallKit reactions ───────────────────────────────────────────
 
   void _onEngineState(VoiceEngineState s) {
@@ -445,6 +478,7 @@ class NexusVoice {
     final call = current.value;
     if (call == null || call.state.isTerminal) return;
     if (n > 0) {
+      _ringTimeout?.cancel(); // answered — stop the no-answer timer
       if (call.state != VoiceCallState.connected && call.state != VoiceCallState.onHold) {
         _set(call.copyWith(state: VoiceCallState.connected, connectedAt: call.connectedAt ?? DateTime.now()));
         unawaited(_guard(() => _callKit.reportConnected(call.sessionId)));
@@ -510,6 +544,8 @@ class NexusVoice {
   }
 
   void _teardown() {
+    _ringTimeout?.cancel();
+    _ringTimeout = null;
     _presence?.cancel();
     _presence = null;
     unawaited(setPresence('ONLINE'));
@@ -539,6 +575,7 @@ class NexusVoice {
     _qualitySub?.cancel();
     _callKitSub?.cancel();
     _presence?.cancel();
+    _ringTimeout?.cancel();
     current.dispose();
   }
 }

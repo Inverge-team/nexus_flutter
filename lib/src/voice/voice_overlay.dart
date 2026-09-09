@@ -46,7 +46,16 @@ class _NexusVoiceOverlayState extends State<NexusVoiceOverlay> {
         ValueListenableBuilder<NexusCall?>(
           valueListenable: Nexus.instance.voice.current,
           builder: (context, call, _) {
-            if (call == null || call.state == VoiceCallState.ended && call.connectedAt == null) {
+            // While an INBOUND call is still ringing, the native full-screen
+            // CallKit ringer owns the screen (incl. over the lock screen) — don't
+            // also draw our in-app screen, or the user sees two call UIs. Our
+            // screen takes over once the call is answered (connecting/connected).
+            final inboundRinging = call != null &&
+                call.direction == VoiceCallDirection.inbound &&
+                call.state == VoiceCallState.ringing;
+            if (call == null ||
+                (call.state == VoiceCallState.ended && call.connectedAt == null) ||
+                inboundRinging) {
               return const SizedBox.shrink();
             }
             return _CallScreen(call: call);
