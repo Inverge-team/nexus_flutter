@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../background_dispatch.dart';
 import '../http_client.dart';
@@ -206,6 +207,23 @@ class NexusVoice {
     }
   }
 
+  /// A call has NO audio without microphone access, and WebRTC's getUserMedia
+  /// fails with NotAllowedError if it isn't granted. Request it (turnkey) before
+  /// joining any media room.
+  Future<bool> _ensureMicPermission() async {
+    try {
+      var status = await Permission.microphone.status;
+      if (!status.isGranted) status = await Permission.microphone.request();
+      if (!status.isGranted) {
+        NexusLog.warn('voice: microphone permission $status — cannot join call audio');
+      }
+      return status.isGranted;
+    } catch (e) {
+      NexusLog.warn('voice: mic permission check failed: $e');
+      return true; // don't hard-block on a plugin error — let getUserMedia try
+    }
+  }
+
   void _bindEngine() {
     _engineSub?.cancel();
     _remoteSub?.cancel();
@@ -229,6 +247,7 @@ class NexusVoice {
     Map<String, dynamic> metadata = const {},
   }) async {
     try {
+      if (!await _ensureMicPermission()) return _fail(null, 'microphone_denied');
       // The name the CALLEE sees for us (rings + call screen). Rides in session
       // metadata → the backend puts it in the ring payload as `callerName`.
       final md = <String, dynamic>{
@@ -356,6 +375,10 @@ class NexusVoice {
     if (_answeringSessionId == call.sessionId) return;
     _answeringSessionId = call.sessionId;
     NexusLog.info('voice: answering call ${call.sessionId}');
+    if (!await _ensureMicPermission()) {
+      _fail(call.sessionId, 'microphone_denied');
+      return;
+    }
     try {
       _set(call.copyWith(state: VoiceCallState.connecting));
       final myLeg = await _post('/partner/voice/legs', {
