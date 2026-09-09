@@ -106,14 +106,19 @@ class CallKitNativeHandler implements NexusCallKit {
   Future<String?> acceptedCallId() async {
     try {
       final dynamic calls = await FlutterCallkitIncoming.activeCalls();
+      // ignore: avoid_print
+      print('[NexusVoice] activeCalls() → $calls');
       if (calls is List) {
         for (final dynamic c in calls) {
           try {
-            if (c['isAccepted'] == true) return c['id'] as String?;
+            if (c['isAccepted'] == true || c['accepted'] == true) return c['id'] as String?;
           } catch (_) {/* not a map-like entry */}
         }
       }
-    } catch (_) {/* ignore */}
+    } catch (e) {
+      // ignore: avoid_print
+      print('[NexusVoice] activeCalls() failed: $e');
+    }
     return null;
   }
 

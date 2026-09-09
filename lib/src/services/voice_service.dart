@@ -75,9 +75,11 @@ class NexusVoice {
   Future<void> _answerColdLaunchAccept() async {
     final ck = _callKit;
     if (ck is! CallKitNativeHandler) return;
+    NexusLog.info('voice: checking for a cold-launch accepted call…');
     for (var i = 0; i < 12; i++) {
       final accepted = await ck.acceptedCallId();
       if (accepted != null) {
+        NexusLog.info('voice: cold-launch accepted call $accepted — answering');
         await answer(accepted);
         return;
       }
@@ -86,6 +88,7 @@ class NexusVoice {
       if (c != null && c.legId != null && c.state.isActive) return;
       await Future<void>.delayed(const Duration(milliseconds: 400));
     }
+    NexusLog.warn('voice: no cold-launch accepted call found after polling');
   }
 
   bool _fcmWired = false;
@@ -540,6 +543,7 @@ class NexusVoice {
   }
 
   void _onCallKitAction(CallKitAction a) {
+    NexusLog.info('voice: callkit action ${a.type.name} call=${a.callId}');
     switch (a.type) {
       case CallKitActionType.answer:
         unawaited(answer(a.callId)); // callId == sessionId (cold-launch safe)
