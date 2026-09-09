@@ -42,6 +42,7 @@ class NexusVoice {
   StreamSubscription<CallKitAction>? _callKitSub;
   Timer? _presence;
   Timer? _ringTimeout;
+  String? _answeringSessionId; // guards against double-answering one call
 
   /// How long an outbound call rings unanswered before it auto-ends (no answer).
   static const Duration _ringTimeoutDuration = Duration(seconds: 45);
@@ -60,14 +61,30 @@ class NexusVoice {
     _initialised = true;
     if (_engine is NoopVoiceEngine) useEngine(LiveKitVoiceEngine());
     if (_callKit is NoopCallKit) useCallKit(CallKitNativeHandler());
-    await _registerDevice();
     _listenForIncoming();
-    // If the app was cold-launched by the user ACCEPTING an incoming call from
-    // the native UI (killed-app case), join it now.
+    // If the app was cold-launched / foregrounded by the user ACCEPTING an
+    // incoming call from the native UI, join it NOW. This is time-critical, so
+    // it must NOT wait behind device registration (whose token-retry loop can
+    // block for tens of seconds — long enough for the caller to give up).
+    unawaited(_answerColdLaunchAccept());
+    unawaited(_registerDevice());
+  }
+
+  /// After a cold launch from a native "accept", the accepted flag may not be
+  /// visible the very instant we start — poll briefly, then answer.
+  Future<void> _answerColdLaunchAccept() async {
     final ck = _callKit;
-    if (ck is CallKitNativeHandler) {
+    if (ck is! CallKitNativeHandler) return;
+    for (var i = 0; i < 12; i++) {
       final accepted = await ck.acceptedCallId();
-      if (accepted != null) unawaited(answer(accepted));
+      if (accepted != null) {
+        await answer(accepted);
+        return;
+      }
+      // Stop polling once a live call is already being handled by the event path.
+      final c = current.value;
+      if (c != null && c.legId != null && c.state.isActive) return;
+      await Future<void>.delayed(const Duration(milliseconds: 400));
     }
   }
 
@@ -331,6 +348,11 @@ class NexusVoice {
       _set(call);
     }
     if (call == null || call.direction != VoiceCallDirection.inbound) return;
+    // The accept can reach us via BOTH the CallKit event stream and the
+    // cold-launch poll — answer each call exactly once, or we create two legs.
+    if (_answeringSessionId == call.sessionId) return;
+    _answeringSessionId = call.sessionId;
+    NexusLog.info('voice: answering call ${call.sessionId}');
     try {
       _set(call.copyWith(state: VoiceCallState.connecting));
       final myLeg = await _post('/partner/voice/legs', {
@@ -342,10 +364,12 @@ class NexusVoice {
       final legId = _id(myLeg?['leg']);
       final token = NexusJoinToken.tryParse(myLeg?['join'] as Map<String, dynamic>?);
       if (legId == null || token == null) {
+        NexusLog.warn('voice: answer join_failed (leg=$legId token=${token != null}) — ${myLeg?['error']}');
         _fail(call.sessionId, 'join_failed');
         return;
       }
       _set(current.value!.copyWith(legId: legId));
+      NexusLog.info('voice: answered — joining media room "${token.room}" at ${token.url}');
       await _engine.connect(token);
       await _post('/partner/voice/legs/answer', {'legId': legId});
       final sid = call.sessionId;
@@ -556,6 +580,7 @@ class NexusVoice {
   }
 
   void _teardown() {
+    _answeringSessionId = null;
     _ringTimeout?.cancel();
     _ringTimeout = null;
     _presence?.cancel();
