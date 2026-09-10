@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -38,6 +39,7 @@ class NexusVoice {
   /// The current in-app IVR menu session (null when not in a menu). Drives the
   /// built-in [NexusIvrOverlay]; listen to build your own support-menu UI.
   final ValueNotifier<NexusIvrSession?> ivr = ValueNotifier<NexusIvrSession?>(null);
+  final AudioPlayer _ivrAudio = AudioPlayer(); // plays IVR prompt recordings (audioUrl)
 
   /// Optional hook for IVR prompts returned by DTMF (play/collect instructions).
   void Function(Map<String, dynamic> instruction)? onIvr;
@@ -483,7 +485,26 @@ class NexusVoice {
   }
 
   /// Dismiss the IVR menu (the user backed out).
-  void endIvr() => ivr.value = null;
+  void endIvr() {
+    unawaited(_ivrAudio.stop());
+    ivr.value = null;
+  }
+
+  /// Play an IVR prompt recording and complete when it finishes (or after 30s).
+  Future<void> _playPrompt(String url) async {
+    try {
+      await _ivrAudio.stop();
+      final done = Completer<void>();
+      final sub = _ivrAudio.onPlayerComplete.listen((_) {
+        if (!done.isCompleted) done.complete();
+      });
+      await _ivrAudio.play(UrlSource(url));
+      await done.future.timeout(const Duration(seconds: 30), onTimeout: () {});
+      await sub.cancel();
+    } catch (e) {
+      NexusLog.warn('voice: IVR audio failed ($url): $e');
+    }
+  }
 
   Future<void> _advanceIvr(String sessionId) async {
     try {
@@ -496,15 +517,23 @@ class NexusVoice {
   }
 
   Future<void> _handleIvr(String sessionId, Map<String, dynamic> inst) async {
+    await _ivrAudio.stop(); // stop the previous prompt before rendering this step
+    final audioUrl = inst['audioUrl'] as String?;
+    final hasAudio = audioUrl != null && audioUrl.isNotEmpty;
     switch (inst['action'] as String?) {
       case 'play':
         ivr.value = NexusIvrSession(sessionId: sessionId, prompt: inst['text'] as String?);
-        if (inst['hasNext'] == true) {
-          await Future<void>.delayed(const Duration(milliseconds: 1400)); // show the message, then step on
-          if (ivr.value?.sessionId == sessionId) await _advanceIvr(sessionId);
+        // Play the recording (wait for it to finish) or just let the text read.
+        if (hasAudio) {
+          await _playPrompt(audioUrl);
         } else {
-          await Future<void>.delayed(const Duration(seconds: 2)); // terminal message
-          if (ivr.value?.sessionId == sessionId) ivr.value = ivr.value!.copyWith(status: NexusIvrStatus.ended, endedReason: 'ended');
+          await Future<void>.delayed(const Duration(milliseconds: 1600));
+        }
+        if (ivr.value?.sessionId != sessionId) break; // user navigated away meanwhile
+        if (inst['hasNext'] == true) {
+          await _advanceIvr(sessionId);
+        } else {
+          ivr.value = ivr.value!.copyWith(status: NexusIvrStatus.ended, endedReason: 'ended');
         }
         break;
       case 'collect':
@@ -514,6 +543,7 @@ class NexusVoice {
           awaitingInput: true,
           maxDigits: (inst['maxDigits'] as num?)?.toInt() ?? 1,
         );
+        if (hasAudio) unawaited(_playPrompt(audioUrl)); // play the menu prompt; keys work anytime
         break;
       case 'connect':
         ivr.value = NexusIvrSession(sessionId: sessionId, status: NexusIvrStatus.connecting);
@@ -766,6 +796,7 @@ class NexusVoice {
     _ringTimeout?.cancel();
     current.dispose();
     ivr.dispose();
+    unawaited(_ivrAudio.dispose());
   }
 }
 
