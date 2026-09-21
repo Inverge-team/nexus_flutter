@@ -108,7 +108,13 @@ object NexusVoiceManager {
     fun answerInApp(context: Context, callId: String) {
         val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
         if (launch != null) {
-            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            // EXCLUDE_FROM_RECENTS: when the app is opened BY answering a call
+            // (killed/locked), keep it out of the recent-apps panel so the call
+            // doesn't leave the app parked there like the user launched it.
+            launch.addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS,
+            )
             launch.putExtra(EXTRA_ANSWER_CALL_ID, callId)
             try {
                 context.startActivity(launch)
