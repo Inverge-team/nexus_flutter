@@ -66,6 +66,19 @@ class NexusPlugin :
                 )
             }
         }
+        // Bridge native Telecom call events (answer/reject/disconnect handled in
+        // the ConnectionService WITHOUT opening the app) up to the Dart voice
+        // layer when the UI engine is alive.
+        net.inverge.nexus.voice.NexusVoiceManager.events =
+            object : net.inverge.nexus.voice.NexusCallEvents {
+                override fun onAnswer(callId: String) = emitCall("onCallAnswer", callId)
+                override fun onReject(callId: String) = emitCall("onCallReject", callId)
+                override fun onDisconnect(callId: String) = emitCall("onCallDisconnect", callId)
+            }
+    }
+
+    private fun emitCall(method: String, callId: String) {
+        main.post { channel.invokeMethod(method, mapOf("callId" to callId)) }
     }
 
     override fun onMethodCall(call: MethodCall, result: Result) {
@@ -92,6 +105,32 @@ class NexusPlugin :
                 crashReporter?.takePending()?.let { all.addAll(it) }
                 ndk?.takePending()?.let { all.addAll(it) }
                 result.success(all)
+            }
+            "voiceRegisterAccount" -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    appContext?.let { net.inverge.nexus.voice.NexusVoiceManager.registerPhoneAccount(it) }
+                }
+                result.success(null)
+            }
+            "voiceReportIncoming" -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    appContext?.let {
+                        net.inverge.nexus.voice.NexusVoiceManager.reportIncomingCall(
+                            it,
+                            call.argument<String>("callId") ?: "",
+                            call.argument<String>("from") ?: "",
+                            call.argument<String>("displayName"),
+                            call.argument<Boolean>("hasVideo") ?: false,
+                        )
+                    }
+                }
+                result.success(null)
+            }
+            "voiceEndCall" -> {
+                call.argument<String>("callId")?.let {
+                    net.inverge.nexus.voice.NexusVoiceManager.endCall(it)
+                }
+                result.success(null)
             }
             "showNotification" -> showNotification(call, result)
             "showLiveActivity" -> showLiveActivity(call, result)
@@ -286,6 +325,7 @@ class NexusPlugin :
     }
 
     override fun onNewIntent(intent: Intent): Boolean {
+        maybeForwardAnswer(intent)
         val payload = intent.getStringExtra(EXTRA_PAYLOAD)
         val actionId = intent.getStringExtra(EXTRA_ACTION_ID)
         if (payload == null && actionId == null) return false
@@ -308,6 +348,17 @@ class NexusPlugin :
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activityBinding = binding
         binding.addOnNewIntentListener(this)
+        // The app may have been launched by answering a native call — forward it.
+        maybeForwardAnswer(binding.activity.intent)
+    }
+
+    /** If this intent carries a native "answer this call" request, tell Dart to
+     *  answer it in the main engine (the proven media path). Consumes the extra. */
+    private fun maybeForwardAnswer(intent: Intent?) {
+        val callId = intent?.getStringExtra(net.inverge.nexus.voice.NexusVoiceManager.EXTRA_ANSWER_CALL_ID)
+            ?: return
+        intent.removeExtra(net.inverge.nexus.voice.NexusVoiceManager.EXTRA_ANSWER_CALL_ID)
+        main.post { channel.invokeMethod("onCallAnswer", mapOf("callId" to callId)) }
     }
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) =

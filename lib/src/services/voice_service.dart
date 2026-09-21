@@ -6,6 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../nexus_platform_interface.dart';
 import '../background_dispatch.dart';
 import '../http_client.dart';
 import '../identity.dart';
@@ -59,6 +60,7 @@ class NexusVoice {
   String get _deviceId => _identity.deviceKey;
 
   bool _initialised = false;
+  String? _joinedRoom; // the voice:<identity> room we're currently listening on
 
   /// Turnkey setup — called automatically when `voiceEnabled`. Wires the SDK's
   /// BUILT-IN WebRTC engine + native call UI (CallKit/ConnectionService) and
@@ -69,7 +71,30 @@ class NexusVoice {
     _initialised = true;
     if (_engine is NoopVoiceEngine) useEngine(LiveKitVoiceEngine());
     if (_callKit is NoopCallKit) useCallKit(CallKitNativeHandler());
+    // Android: register our OWN self-managed Telecom account so incoming calls
+    // ring in the system UI and are answered natively (headless media, no app
+    // launch). iOS keeps using CallKit via the callkit handler.
+    if (!kIsWeb && Platform.isAndroid) {
+      unawaited(NexusPlatform.instance.voiceRegisterAccount());
+      // Answer/decline taken in the NATIVE call UI (notification or lock-screen
+      // ring). On answer, connect media in THIS (main) engine — the proven path.
+      NexusPlatform.instance.onNativeCallEvent((action, callId) {
+        NexusLog.info('voice: native call action=$action call=$callId');
+        if (action == 'answer') {
+          unawaited(answer(callId));
+        } else if (action == 'reject' || action == 'disconnect') {
+          unawaited(hangup());
+        }
+      });
+    }
     _listenForIncoming();
+    // Mic permission MUST already be granted BEFORE an incoming call arrives: a
+    // call is answered from a killed/background/cold-launch context where the OS
+    // will NOT show a runtime permission dialog, so requesting it at answer time
+    // silently fails and the callee never joins audio (the caller sees "no
+    // answer"). Pre-warm it now — we're in the foreground at startup, the one
+    // moment the dialog can actually appear. WhatsApp does the same up front.
+    unawaited(_ensureMicPermission());
     // If the app was cold-launched / foregrounded by the user ACCEPTING an
     // incoming call from the native UI, join it NOW. This is time-critical, so
     // it must NOT wait behind device registration (whose token-retry loop can
@@ -150,7 +175,30 @@ class NexusVoice {
     _realtime.on('call.rejected', (dynamic d) => _onRemoteEnd(d, VoiceCallState.rejected, 'declined'));
     _realtime.on('call.busy', (dynamic d) => _onRemoteEnd(d, VoiceCallState.rejected, 'busy'));
     _realtime.on('call.cancelled', (dynamic d) => _onRemoteEnd(d, VoiceCallState.cancelled, 'cancelled'));
-    _realtime.join('voice:$_identityId');
+    _joinIdentityRoom();
+  }
+
+  /// Listen on `voice:<current identity>`, leaving any room we joined for a
+  /// previous identity. The socket-level `on(...)` handlers are registered once
+  /// (in [_listenForIncoming]) and stay valid across re-joins.
+  void _joinIdentityRoom() {
+    final room = 'voice:$_identityId';
+    if (_joinedRoom == room) return;
+    final previous = _joinedRoom;
+    _joinedRoom = room;
+    if (previous != null) unawaited(_realtime.leave(previous));
+    unawaited(_realtime.join(room));
+  }
+
+  /// Re-bind voice to the CURRENT identity — MUST be called after
+  /// `identify()`/`reset()`. Voice initialises at app start (before login), so it
+  /// first binds to `voice:<deviceKey>`; without re-binding, an identified user
+  /// keeps listening on the device room and never rings on `voice:<distinctId>`.
+  /// Re-joins the correct room and re-registers the push device under the new id.
+  Future<void> rebindIdentity() async {
+    if (!_initialised) return;
+    _joinIdentityRoom();
+    await _registerDevice();
   }
 
   /// End the current call in response to a remote status event (the other party
@@ -238,6 +286,14 @@ class NexusVoice {
       return false;
     }
   }
+
+  /// Request the microphone permission a voice call needs, returning whether it
+  /// is granted. Call this from your onboarding (a foreground moment with UI
+  /// context) so an incoming call answered later from a killed/background state
+  /// — where no permission dialog can be shown — already has audio access. The
+  /// SDK also pre-warms it on voice init, but calling it during onboarding with
+  /// your own rationale is the best UX.
+  Future<bool> ensurePermissions() => _ensureMicPermission();
 
   /// A call has NO audio without microphone access, and WebRTC's getUserMedia
   /// fails with NotAllowedError if it isn't granted. Request it (turnkey) before
@@ -384,7 +440,17 @@ class NexusVoice {
       legId: ringLegId,
       startedAt: DateTime.now(),
     ));
-    await _guard(() => _callKit.reportIncoming(callId: sessionId, handle: from, displayName: name));
+    if (!kIsWeb && Platform.isAndroid) {
+      // Ring in the system UI via our own ConnectionService (answered natively,
+      // headless media, no app launch).
+      await _guard(() => NexusPlatform.instance.voiceReportIncoming(
+            callId: sessionId,
+            from: from,
+            displayName: name,
+          ));
+    } else {
+      await _guard(() => _callKit.reportIncoming(callId: sessionId, handle: from, displayName: name));
+    }
   }
 
   /// Answer the current inbound call — join as a WebRTC leg.

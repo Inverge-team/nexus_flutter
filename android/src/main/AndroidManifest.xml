@@ -1,3 +1,48 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
   package="net.inverge.nexus">
+
+  <!-- Self-managed Telecom voice: ring in the system UI + answer natively
+       without opening the app; media runs in our own foreground service. -->
+  <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+  <uses-permission android:name="android.permission.RECORD_AUDIO" />
+  <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+  <application>
+    <!-- Telecom binds this to draw the incoming/ongoing call UI itself. -->
+    <service
+      android:name="net.inverge.nexus.voice.NexusConnectionService"
+      android:exported="true"
+      android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE">
+      <intent-filter>
+        <action android:name="android.telecom.ConnectionService" />
+      </intent-filter>
+    </service>
+
+    <!-- Hosts the headless FlutterEngine that connects call media (no Activity). -->
+    <service
+      android:name="net.inverge.nexus.voice.NexusCallForegroundService"
+      android:exported="false"
+      android:foregroundServiceType="phoneCall|microphone" />
+
+    <!-- Answer / Decline taps from the incoming-call notification (no app open). -->
+    <receiver
+      android:name="net.inverge.nexus.voice.NexusCallActionReceiver"
+      android:exported="false" />
+
+    <!-- Native ring screen shown over the lock screen (full-screen intent target).
+         NOT the Flutter app — answering connects media headlessly and finishes. -->
+    <activity
+      android:name="net.inverge.nexus.voice.NexusIncomingCallActivity"
+      android:exported="false"
+      android:excludeFromRecents="true"
+      android:launchMode="singleInstance"
+      android:showWhenLocked="true"
+      android:turnScreenOn="true"
+      android:taskAffinity="net.inverge.nexus.voice.call"
+      android:theme="@android:style/Theme.Material.NoActionBar" />
+  </application>
 </manifest>

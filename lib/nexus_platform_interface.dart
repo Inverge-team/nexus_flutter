@@ -114,4 +114,26 @@ abstract class NexusPlatform extends PlatformInterface {
   /// Register a sink for ActivityKit tokens. `info` carries
   /// `{ kind: 'pushToStart'|'update', activityType?, activityId?, token }`.
   void onLiveActivityToken(void Function(Map<String, dynamic> info) sink) {}
+
+  // ---- Native voice (self-managed Telecom / CallKit) ----
+
+  /// Register the self-managed phone account so the OS routes our calls through
+  /// the native call UI. Call once at startup. No-op where unsupported.
+  Future<void> voiceRegisterAccount() async {}
+
+  /// Ask the OS to ring [callId] in the SYSTEM call UI (over the lock screen).
+  /// The call is answered NATIVELY — the app is never forced open.
+  Future<void> voiceReportIncoming({
+    required String callId,
+    required String from,
+    String? displayName,
+    bool hasVideo = false,
+  }) async {}
+
+  /// End a native call (local hangup / remote-left) so the system UI clears.
+  Future<void> voiceEndCall(String callId) async {}
+
+  /// Register a sink for native call actions the user took in the SYSTEM UI.
+  /// `action` is `answer` | `reject` | `disconnect`; `callId` identifies the call.
+  void onNativeCallEvent(void Function(String action, String callId) sink) {}
 }

@@ -23,6 +23,7 @@ import 'services/push_service.dart';
 import 'services/realtime_service.dart';
 import 'services/remote_config_service.dart';
 import 'services/voice_service.dart';
+import 'voice/voice_headless.dart' show persistVoiceConfig;
 import 'services/replay_service.dart';
 import 'services/sessions_service.dart';
 import 'services/surveys_service.dart';
@@ -127,7 +128,17 @@ class Nexus {
     liveActivity = NexusLiveActivity(_http, _identity);
     if (config.liveActivityEnabled) liveActivity.wire();
     voice = NexusVoice(_http, _identity, realtime);
-    if (config.voiceEnabled) unawaited(voice.init());
+    if (config.voiceEnabled) {
+      // Persist the minimum the HEADLESS call isolate needs (it shares no state
+      // with the app) so an answered call can reach the backend without the app.
+      unawaited(persistVoiceConfig(
+        base: config.httpBase,
+        apiKey: config.apiKey,
+        osType: _identity.deviceContext['osType'] as String?,
+        osVersion: _identity.deviceContext['osVersion'] as String?,
+      ));
+      unawaited(voice.init());
+    }
     // Event-triggered surveys + in-app messages fire off analytics events;
     // in-app `event`-action buttons track events back.
     events.onTracked = (name) {
@@ -308,17 +319,28 @@ class Nexus {
     String? name,
     String? phone,
     Map<String, Object?>? traits,
-  }) => sessions.identify(
-    distinctId,
-    email: email,
-    name: name,
-    phone: phone,
-    traits: traits,
-  );
+  }) async {
+    await sessions.identify(
+      distinctId,
+      email: email,
+      name: name,
+      phone: phone,
+      traits: traits,
+    );
+    // Voice binds its realtime room + push device at init (before login), so
+    // re-bind to the newly-identified user — otherwise incoming calls would keep
+    // ringing on the pre-login device room, never on `voice:<distinctId>`.
+    if (config.voiceEnabled) await voice.rebindIdentity();
+  }
 
   /// Forget the current user and start a fresh session (e.g. on logout). Also
   /// clears the persisted identity so the next launch starts anonymous.
-  Future<void> reset() => sessions.reset();
+  Future<void> reset() async {
+    await sessions.reset();
+    // Drop back to the anonymous device room so a logged-out device no longer
+    // rings for the previous user.
+    if (config.voiceEnabled) await voice.rebindIdentity();
+  }
 
   /// Record a screen/page change for session replay's Pages tab. Wire
   /// [NexusNavigatorObserver] into `navigatorObservers` to do this automatically.

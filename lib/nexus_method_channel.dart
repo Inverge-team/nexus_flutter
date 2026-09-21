@@ -206,6 +206,53 @@ class MethodChannelNexus extends NexusPlatform {
   @override
   void onLiveActivityToken(void Function(Map<String, dynamic> info) sink) => _laTokenSink = sink;
 
+  void Function(String action, String callId)? _callSink;
+  // A native call action can arrive during cold launch BEFORE the voice service
+  // wires its listener (the app was opened by answering). Buffer the latest so
+  // it is not lost — answering must never be dropped.
+  List<String>? _pendingCall;
+
+  @override
+  Future<void> voiceRegisterAccount() async {
+    try {
+      await methodChannel.invokeMethod('voiceRegisterAccount');
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> voiceReportIncoming({
+    required String callId,
+    required String from,
+    String? displayName,
+    bool hasVideo = false,
+  }) async {
+    try {
+      await methodChannel.invokeMethod('voiceReportIncoming', {
+        'callId': callId,
+        'from': from,
+        'displayName': displayName,
+        'hasVideo': hasVideo,
+      });
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> voiceEndCall(String callId) async {
+    try {
+      await methodChannel.invokeMethod('voiceEndCall', {'callId': callId});
+    } catch (_) {}
+  }
+
+  @override
+  void onNativeCallEvent(void Function(String action, String callId) sink) {
+    _callSink = sink;
+    final p = _pendingCall;
+    if (p != null) {
+      _pendingCall = null;
+      sink(p[0], p[1]);
+    }
+  }
+
   Future<dynamic> _handleNative(MethodCall call) async {
     if (call.method == 'onReplayBatch') {
       final args = (call.arguments as Map);
@@ -217,6 +264,19 @@ class MethodChannelNexus extends NexusPlatform {
       _tapSink?.call(_decode(call.arguments));
     } else if (call.method == 'onLiveActivityToken') {
       _laTokenSink?.call(_decode(call.arguments));
+    } else if (call.method == 'onCallAnswer' || call.method == 'onCallReject' || call.method == 'onCallDisconnect') {
+      final args = _decode(call.arguments);
+      final action = call.method == 'onCallAnswer'
+          ? 'answer'
+          : call.method == 'onCallReject'
+              ? 'reject'
+              : 'disconnect';
+      final callId = (args['callId'] as String?) ?? '';
+      if (_callSink != null) {
+        _callSink!.call(action, callId);
+      } else {
+        _pendingCall = [action, callId]; // replay when the listener attaches
+      }
     }
     return null;
   }

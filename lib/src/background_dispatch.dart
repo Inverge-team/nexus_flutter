@@ -1,5 +1,8 @@
+import 'dart:io' show Platform;
+
 import 'package:firebase_messaging/firebase_messaging.dart';
 
+import '../nexus_platform_interface.dart';
 import 'services/push_service.dart' show renderNexusAndroidNotification;
 import 'voice/callkit_native.dart' show showNexusIncomingCall;
 
@@ -25,7 +28,20 @@ void ensureNexusBackgroundHandler() {
 @pragma('vm:entry-point')
 Future<void> nexusUnifiedBackgroundHandler(RemoteMessage message) async {
   if (message.data['type'] == 'incoming_call') {
-    await showNexusIncomingCall(message.data);
+    final d = message.data;
+    final callId = (d['sessionId'] ?? d['session_id'] ?? '') as String? ?? '';
+    if (Platform.isAndroid && callId.isNotEmpty) {
+      // Ring in the SYSTEM call UI via our own native ConnectionService — the
+      // call is answered natively, without opening the app (WhatsApp model).
+      await NexusPlatform.instance.voiceReportIncoming(
+        callId: callId,
+        from: (d['from'] ?? d['callerNumber'] ?? '') as String? ?? '',
+        displayName: d['callerName'] as String?,
+      );
+    } else {
+      // iOS (CallKit) keeps the app backgrounded already — use the existing path.
+      await showNexusIncomingCall(d);
+    }
     return;
   }
   await renderNexusAndroidNotification(message);
