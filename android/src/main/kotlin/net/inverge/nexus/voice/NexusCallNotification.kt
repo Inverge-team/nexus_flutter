@@ -17,6 +17,7 @@ import android.os.Build
  */
 object NexusCallNotification {
     private const val CHANNEL_ID = "nexus_incoming_call"
+    private const val MISSED_CHANNEL_ID = "nexus_missed_call_v2"
 
     fun show(context: Context, callId: String, from: String, displayName: String?) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -69,6 +70,73 @@ object NexusCallNotification {
     fun cancel(context: Context, callId: String) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.cancel(callId.hashCode())
+    }
+
+    /** Replace the (now-cancelled) ring with a "Missed call" notification — the
+     *  caller hung up before we answered, exactly like a native missed call. */
+    fun showMissed(context: Context, callId: String, from: String, displayName: String?) {
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        ensureMissedChannel(nm)
+        val name = displayName?.takeIf { it.isNotEmpty() } ?: from.ifEmpty { "Unknown caller" }
+
+        // Tapping it opens the app (like tapping a native missed call).
+        val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val tap = if (open != null) {
+            var f = PendingIntent.FLAG_UPDATE_CURRENT
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) f = f or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.getActivity(context, callId.hashCode() * 10 + 5, open, f)
+        } else {
+            null
+        }
+
+        val builder = Notification.Builder(context, MISSED_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_notify_missed_call)
+            .setContentTitle(name)
+            .setContentText("Missed call")
+            .setCategory(Notification.CATEGORY_MISSED_CALL)
+            .setAutoCancel(true)
+            .setShowWhen(true)
+            .setWhen(System.currentTimeMillis())
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // A Person makes Android render it with the caller's avatar/name — the
+            // native missed-call look, not a plain text line.
+            val caller = Person.Builder().setName(name).build()
+            builder.addPerson(caller)
+        }
+        if (tap != null) builder.setContentIntent(tap)
+        try {
+            nm.notify(missedId(callId), builder.build())
+            logMissed(context, "showMissed posted id=${missedId(callId)} name=$name channelBlocked=${channelBlocked(nm)}")
+        } catch (t: Throwable) {
+            logMissed(context, "showMissed FAILED: $t")
+        }
+    }
+
+    private fun channelBlocked(nm: NotificationManager): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        val ch = nm.getNotificationChannel(MISSED_CHANNEL_ID) ?: return false
+        return ch.importance == NotificationManager.IMPORTANCE_NONE
+    }
+
+    private fun logMissed(context: Context, msg: String) {
+        try {
+            java.io.File(context.filesDir, "nexus_missed.log")
+                .appendText("${System.currentTimeMillis()}  $msg\n")
+        } catch (_: Throwable) {}
+        android.util.Log.i("NexusVoice", msg)
+    }
+
+    private fun missedId(callId: String) = callId.hashCode() xor 0x4D495353 // "MISS"
+
+    private fun ensureMissedChannel(nm: NotificationManager) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        // HIGH so OEMs (MIUI) actually surface it — a missed call should be seen.
+        val ch = NotificationChannel(MISSED_CHANNEL_ID, "Missed calls", NotificationManager.IMPORTANCE_HIGH)
+        ch.description = "Missed voice calls"
+        ch.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        nm.createNotificationChannel(ch)
     }
 
     private fun action(context: Context, act: String, callId: String, req: Int): PendingIntent {

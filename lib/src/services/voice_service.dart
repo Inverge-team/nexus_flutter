@@ -51,7 +51,29 @@ class NexusVoice {
   StreamSubscription<CallKitAction>? _callKitSub;
   Timer? _presence;
   Timer? _ringTimeout;
+  // After we answer, the caller may already have hung up (left the media room),
+  // so no remote participant ever appears and the call is stuck "connecting".
+  // This ends it if nobody shows up shortly after we join.
+  Timer? _connectTimeout;
+  static const Duration _connectTimeoutDuration = Duration(seconds: 12);
   String? _answeringSessionId; // guards against double-answering one call
+  // Sessions the other side just ended — so a racing answer (pilot hangs up as
+  // the client taps answer) doesn't try to join a dead call and hang forever.
+  final Set<String> _recentlyEnded = <String>{};
+
+  /// Dismiss the native Android call UI (our self-managed ConnectionService ring
+  /// + ongoing notification). MUST run on every end path or a cancelled/ended
+  /// call stays on screen and answerable. No-op off Android (iOS uses callkit).
+  void _dismissNativeCall(String sessionId) {
+    if (!kIsWeb && Platform.isAndroid) {
+      unawaited(_guard(() => NexusPlatform.instance.voiceEndCall(sessionId)));
+    }
+  }
+
+  void _markEnded(String sessionId) {
+    _recentlyEnded.add(sessionId);
+    if (_recentlyEnded.length > 50) _recentlyEnded.clear();
+  }
 
   /// How long an outbound call rings unanswered before it auto-ends (no answer).
   static const Duration _ringTimeoutDuration = Duration(seconds: 45);
@@ -206,8 +228,26 @@ class NexusVoice {
   void _onRemoteEnd(dynamic data, VoiceCallState state, String reason) {
     if (data is! Map) return;
     final sid = (data['sessionId'] ?? data['session_id']) as String?;
+    if (sid == null) return;
+    // The OTHER side ended it — the call must never stay ringing/answerable, even
+    // if we haven't tracked it in `current` yet (killed/racing). Remember it so a
+    // racing answer bails, then clear the native UI.
+    _markEnded(sid);
     final call = current.value;
-    if (call == null || sid == null || call.sessionId != sid || call.state.isTerminal) return;
+    if (reason == 'cancelled') {
+      // Caller gave up before we answered → leave a native "Missed call".
+      final from = (data['from'] ?? data['callerNumber'] ?? call?.remoteAddress ?? '').toString();
+      final name = (data['callerName'] ?? call?.remoteName) as String?;
+      if (!kIsWeb && Platform.isAndroid) {
+        unawaited(_guard(() =>
+            NexusPlatform.instance.voiceMissedCall(callId: sid, from: from, displayName: name)));
+      } else {
+        _dismissNativeCall(sid);
+      }
+    } else {
+      _dismissNativeCall(sid); // declined/busy → just clear it
+    }
+    if (call == null || call.sessionId != sid || call.state.isTerminal) return;
     NexusLog.info('voice: remote $reason for ${call.sessionId}');
     _ringTimeout?.cancel();
     unawaited(_guard(_engine.disconnect));
@@ -215,7 +255,7 @@ class NexusVoice {
     if (call.legId != null) {
       unawaited(_post('/partner/voice/legs/hangup', {'legId': call.legId, 'reason': reason}));
     }
-    unawaited(_guard(() => _callKit.reportEnded(call.sessionId))); // dismiss native ringer/ongoing UI
+    unawaited(_guard(() => _callKit.reportEnded(call.sessionId))); // iOS native UI
     _set(call.copyWith(state: state, endReason: reason));
     _teardown();
   }
@@ -456,6 +496,14 @@ class NexusVoice {
   /// Answer the current inbound call — join as a WebRTC leg.
   Future<void> answer([String? sessionId]) async {
     var call = current.value;
+    // The other side ended it just as we answered — don't join a dead session
+    // (that hangs on "connecting"); make sure the native UI is gone and bail.
+    final targetSid = sessionId ?? call?.sessionId;
+    if (targetSid != null && _recentlyEnded.contains(targetSid)) {
+      NexusLog.info('voice: answer ignored — $targetSid already ended by remote');
+      _dismissNativeCall(targetSid);
+      return;
+    }
     // Cold-launch accept: the app was killed and the user accepted from the
     // native UI — reconstruct the inbound call from the session id in the event.
     if (call == null && sessionId != null) {
@@ -499,10 +547,39 @@ class NexusVoice {
       final sid = call.sessionId;
       await _guard(() => _callKit.reportConnected(sid));
       _startPresence();
+      // If the caller already hung up, no remote will ever join this room — don't
+      // sit on "connecting" forever. End it if nobody appears shortly.
+      _armConnectTimeout(sid);
     } catch (e) {
       NexusLog.error('voice.answer failed: $e');
       _fail(call.sessionId, 'error');
     }
+  }
+
+  /// After answering, end the call if it never actually connects (no remote
+  /// participant appears — the caller left the room before we joined).
+  void _armConnectTimeout(String sessionId) {
+    _connectTimeout?.cancel();
+    _connectTimeout = Timer(_connectTimeoutDuration, () {
+      final call = current.value;
+      if (call == null || call.sessionId != sessionId) return;
+      // Already connected or already ended → nothing to do.
+      if (call.state == VoiceCallState.connected ||
+          call.state == VoiceCallState.onHold ||
+          call.state.isTerminal) {
+        return;
+      }
+      NexusLog.info('voice: connect timeout — caller left before we joined ($sessionId)');
+      unawaited(_guard(_engine.disconnect));
+      if (call.legId != null) {
+        unawaited(_post('/partner/voice/legs/hangup', {'legId': call.legId, 'reason': 'remote_left'}));
+      }
+      _markEnded(sessionId);
+      unawaited(_guard(() => _callKit.reportEnded(sessionId)));
+      _dismissNativeCall(sessionId);
+      _set(call.copyWith(state: VoiceCallState.ended, endReason: 'remote_left'));
+      _teardown();
+    });
   }
 
   /// Decline the current inbound call.
@@ -510,6 +587,8 @@ class NexusVoice {
     final call = current.value;
     if (call == null) return;
     await _guard(() => _callKit.reportEnded(call.sessionId));
+    _dismissNativeCall(call.sessionId);
+    _markEnded(call.sessionId);
     if (call.legId != null) {
       await _post('/partner/voice/legs/hangup', {'legId': call.legId, 'reason': 'declined'});
     }
@@ -649,6 +728,8 @@ class NexusVoice {
       await _post('/partner/voice/legs/hangup', {'legId': call.legId, 'reason': 'hangup'});
     }
     await _guard(() => _callKit.reportEnded(call.sessionId));
+    _dismissNativeCall(call.sessionId);
+    _markEnded(call.sessionId);
     _set(call.copyWith(state: VoiceCallState.ended, endReason: 'hangup'));
     _teardown();
   }
@@ -761,15 +842,18 @@ class NexusVoice {
     if (call == null || call.state.isTerminal) return;
     if (n > 0) {
       _ringTimeout?.cancel(); // answered — stop the no-answer timer
+      _connectTimeout?.cancel(); // remote is here — we really connected
       if (call.state != VoiceCallState.connected && call.state != VoiceCallState.onHold) {
         _set(call.copyWith(state: VoiceCallState.connected, connectedAt: call.connectedAt ?? DateTime.now()));
         unawaited(_guard(() => _callKit.reportConnected(call.sessionId)));
       }
     } else if (call.connectedAt != null && call.state.isActive) {
       // The other party left an established call → end it.
+      _markEnded(call.sessionId);
       _set(call.copyWith(state: VoiceCallState.ended, endReason: 'remote_left'));
       unawaited(_guard(_engine.disconnect));
       unawaited(_guard(() => _callKit.reportEnded(call.sessionId)));
+      _dismissNativeCall(call.sessionId);
       _teardown();
     }
   }
@@ -821,7 +905,11 @@ class NexusVoice {
       _set(call.copyWith(state: VoiceCallState.failed, endReason: reason));
     }
     unawaited(_guard(_engine.disconnect));
-    if (sessionId != null) unawaited(_guard(() => _callKit.reportEnded(sessionId)));
+    if (sessionId != null) {
+      _markEnded(sessionId);
+      unawaited(_guard(() => _callKit.reportEnded(sessionId)));
+      _dismissNativeCall(sessionId); // clear the native ring/ongoing UI too
+    }
     _teardown();
     return null;
   }
@@ -830,6 +918,8 @@ class NexusVoice {
     _answeringSessionId = null;
     _ringTimeout?.cancel();
     _ringTimeout = null;
+    _connectTimeout?.cancel();
+    _connectTimeout = null;
     _presence?.cancel();
     _presence = null;
     unawaited(setPresence('ONLINE'));

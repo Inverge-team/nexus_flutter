@@ -132,6 +132,16 @@ class NexusPlugin :
                 }
                 result.success(null)
             }
+            "voiceMissedCall" -> {
+                appContext?.let { ctx ->
+                    call.argument<String>("callId")?.let {
+                        net.inverge.nexus.voice.NexusVoiceManager.missedCall(
+                            ctx, it, call.argument<String>("from") ?: "", call.argument<String>("displayName"),
+                        )
+                    }
+                }
+                result.success(null)
+            }
             "showNotification" -> showNotification(call, result)
             "showLiveActivity" -> showLiveActivity(call, result)
             "endLiveActivity" -> {

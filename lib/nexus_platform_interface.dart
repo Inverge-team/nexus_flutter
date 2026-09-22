@@ -133,6 +133,14 @@ abstract class NexusPlatform extends PlatformInterface {
   /// End a native call (local hangup / remote-left) so the system UI clears.
   Future<void> voiceEndCall(String callId) async {}
 
+  /// The caller cancelled before we answered — clear the ring and leave a
+  /// "Missed call" notification, like a native phone call.
+  Future<void> voiceMissedCall({
+    required String callId,
+    required String from,
+    String? displayName,
+  }) async {}
+
   /// Register a sink for native call actions the user took in the SYSTEM UI.
   /// `action` is `answer` | `reject` | `disconnect`; `callId` identifies the call.
   void onNativeCallEvent(void Function(String action, String callId) sink) {}

@@ -32,7 +32,13 @@ class NexusIncomingCallActivity : Activity() {
         val name = intent.getStringExtra(EXTRA_NAME)
             ?: intent.getStringExtra(EXTRA_FROM).orEmpty().ifEmpty { "Incoming call" }
 
+        current = this // so a remote cancel can close this lock-screen ring screen
         setContentView(buildUi(name))
+    }
+
+    override fun onDestroy() {
+        if (current === this) current = null
+        super.onDestroy()
     }
 
     private fun buildUi(name: String): LinearLayout {
@@ -110,5 +116,15 @@ class NexusIncomingCallActivity : Activity() {
         const val EXTRA_CALL_ID = "callId"
         const val EXTRA_FROM = "from"
         const val EXTRA_NAME = "name"
+
+        /** The ring screen currently shown, if any (e.g. over the lock screen). */
+        private var current: NexusIncomingCallActivity? = null
+
+        /** Close the lock-screen ring screen for [callId] — the caller cancelled
+         *  or the call ended remotely, so it must not keep ringing. */
+        fun finishFor(callId: String) {
+            val a = current ?: return
+            if (a.callId == callId) a.runOnUiThread { a.finishAndRemoveTask() }
+        }
     }
 }

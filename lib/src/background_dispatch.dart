@@ -44,5 +44,20 @@ Future<void> nexusUnifiedBackgroundHandler(RemoteMessage message) async {
     }
     return;
   }
+  // The caller hung up before we answered — dismiss the ring and leave a native
+  // "Missed call" notification, even when the app is killed (realtime can't reach
+  // a killed app, so the backend also pushes this cancel).
+  if (message.data['type'] == 'cancel_call') {
+    final d = message.data;
+    final callId = (d['sessionId'] ?? d['session_id'] ?? '') as String? ?? '';
+    if (Platform.isAndroid && callId.isNotEmpty) {
+      await NexusPlatform.instance.voiceMissedCall(
+        callId: callId,
+        from: (d['from'] ?? d['callerNumber'] ?? '') as String? ?? '',
+        displayName: d['callerName'] as String?,
+      );
+    }
+    return;
+  }
   await renderNexusAndroidNotification(message);
 }

@@ -102,6 +102,16 @@ object NexusVoiceManager {
         connections[callId]?.endFromApp()
     }
 
+    /** The caller cancelled while we were still ringing — end the ring as MISSED
+     *  and leave a "Missed call" notification, like a native phone call. */
+    fun missedCall(context: Context, callId: String, from: String, displayName: String?) {
+        connections[callId]?.markMissed()
+        // Also cancel the ring directly — a killed-app cancel push may arrive with
+        // no tracked connection, but the ring notification must still clear.
+        NexusCallNotification.cancel(context, callId)
+        NexusCallNotification.showMissed(context, callId, from, displayName)
+    }
+
     /** Bring the app to the foreground and tell it to answer [callId] in the main
      *  Flutter engine (the proven LiveKit path). Works from a killed/locked state:
      *  the launch intent carries the call id, which the plugin reads on attach. */

@@ -244,6 +244,21 @@ class MethodChannelNexus extends NexusPlatform {
   }
 
   @override
+  Future<void> voiceMissedCall({
+    required String callId,
+    required String from,
+    String? displayName,
+  }) async {
+    try {
+      await methodChannel.invokeMethod('voiceMissedCall', {
+        'callId': callId,
+        'from': from,
+        'displayName': displayName,
+      });
+    } catch (_) {}
+  }
+
+  @override
   void onNativeCallEvent(void Function(String action, String callId) sink) {
     _callSink = sink;
     final p = _pendingCall;

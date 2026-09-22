@@ -81,8 +81,19 @@ class NexusConnection(
     /** Local hangup / remote-left originated from the app or media layer. */
     fun endFromApp() {
         NexusCallNotification.cancel(context, callId)
+        NexusIncomingCallActivity.finishFor(callId) // close the lock-screen ring
         NexusCallForegroundService.stop(context, callId)
         setDisconnected(DisconnectCause(DisconnectCause.REMOTE))
+        destroyCall()
+    }
+
+    /** The caller cancelled before we answered → disconnect as a MISSED call so
+     *  the system logs it as missed (the caller shows in the missed-call UI). */
+    fun markMissed() {
+        NexusCallNotification.cancel(context, callId)
+        NexusIncomingCallActivity.finishFor(callId) // close the lock-screen ring
+        NexusCallForegroundService.stop(context, callId)
+        setDisconnected(DisconnectCause(DisconnectCause.MISSED))
         destroyCall()
     }
 
