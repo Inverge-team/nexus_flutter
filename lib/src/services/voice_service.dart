@@ -532,6 +532,7 @@ class NexusVoice {
         'role': 'callee',
         'endpointType': 'webrtc',
         'direction': 'inbound',
+        'identityId': _identityId, // tag the media leg with WHO answered
       });
       final legId = _id(myLeg?['leg']);
       final token = NexusJoinToken.tryParse(myLeg?['join'] as Map<String, dynamic>?);
