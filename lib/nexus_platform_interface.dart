@@ -144,4 +144,57 @@ abstract class NexusPlatform extends PlatformInterface {
   /// Register a sink for native call actions the user took in the SYSTEM UI.
   /// `action` is `answer` | `reject` | `disconnect`; `callId` identifies the call.
   void onNativeCallEvent(void Function(String action, String callId) sink) {}
+
+  /// Start a native OUTGOING call entry. iOS only in practice: under CallKit the
+  /// audio session is activated only for a call the OS knows about, so an
+  /// unreported outbound call has no audio. Android deliberately skips this (a
+  /// self-managed outgoing Connection can auto-end and tear down a live call).
+  Future<void> voiceReportOutgoing({
+    required String callId,
+    required String to,
+    String? displayName,
+  }) async {}
+
+  /// Tell the OS the call connected (starts its timer / active-call UI).
+  Future<void> voiceReportConnected(String callId) async {}
+
+  /// The device's APNs VoIP (PushKit) token, registered with the Voice control
+  /// plane so a killed app can be rung. Null off iOS / before the token arrives.
+  Future<String?> voiceVoipToken() async => null;
+
+  /// Register a sink for in-call controls the user drove from the SYSTEM call UI
+  /// (mute / hold / DTMF keypad). `action` is `mute` | `hold` | `dtmf`; [value]
+  /// is the bool or digit string. iOS/CallKit only — Android's self-managed UI
+  /// has no system in-call controls.
+  void onNativeCallControl(void Function(String action, String callId, Object? value) sink) {}
+
+  /// Register a sink for the external call system's audio-session window (iOS
+  /// CallKit `didActivate`/`didDeactivate`). The media engine may only run its
+  /// audio engine while this is `true`.
+  void onNativeCallAudioSession(void Function(bool active) sink) {}
+
+  /// Register a sink for incoming-call payloads delivered natively (iOS APNs
+  /// VoIP/PushKit). On Android the equivalent arrives as an FCM data message
+  /// handled in Dart, so this never fires there.
+  void onNativeVoicePush(void Function(Map<String, dynamic> data) sink) {}
+
+  /// Register a sink for APNs VoIP token updates (iOS PushKit).
+  void onNativeVoipToken(void Function(String token) sink) {}
+
+  /// Whether the app is in the foreground. Answered authoritatively on iOS
+  /// (`UIApplication.applicationState`), where a VoIP push can launch the app in
+  /// the BACKGROUND and no permission dialog can be presented. Defaults to true
+  /// where unimplemented, preserving the caller's normal behaviour.
+  Future<bool> appIsForeground() async => true;
+
+  /// The OS microphone authorization: `granted` | `denied` | `restricted` |
+  /// `undetermined`. Null where unimplemented (callers then fall back to
+  /// `permission_handler`). iOS only — and necessary there because
+  /// `permission_handler` cannot distinguish "never asked" from "refused".
+  Future<String?> micPermissionStatus() async => null;
+
+  /// Ask the OS for the microphone and return whether it was granted, using the
+  /// platform's own API rather than a permission package. Null where
+  /// unimplemented, so callers fall back to `permission_handler`. iOS only.
+  Future<bool?> micRequestPermission() async => null;
 }

@@ -6,7 +6,7 @@ error/crash monitoring, feature flags, remote config, deep‑link attribution,
 realtime messaging, session replay, in‑product surveys, and push notifications** — all correlated to
 a single user journey.
 
-- Package: `nexus_flutter` · version `1.0.4`
+- Package: `nexus_flutter` 
 - Platforms: Android, iOS, Web, macOS, Windows, Linux
 - Dart SDK: `^3.13.0`
 
@@ -42,7 +42,7 @@ Add the dependency (from a path, git, or pub once published):
 
 ```yaml
 dependencies:
-  nexus_flutter: ^1.0.1
+  nexus_flutter: ^x.x.x // your preferred version number
 ```
 
 ```bash
@@ -760,8 +760,9 @@ re‑fetches surveys/remote‑config, and reconnects realtime.
 ## Nexus Voice (calling)
 
 Turnkey CPaaS calling — **just enable the flag**. The SDK bundles the WebRTC
-media engine and the native call UI (CallKit on iOS, a full-screen call /
-ConnectionService on Android) and registers this device for incoming-call push.
+media engine and its OWN native call stack on both platforms — **CallKit +
+PushKit on iOS**, a self-managed **Telecom ConnectionService on Android**, no
+third-party calling package — and registers this device for incoming-call push.
 Developers place and control calls; they never wire a media engine, CallKit, or
 push adapters.
 
@@ -796,21 +797,74 @@ pushes the ring. When the user taps **Accept** on the system UI, the SDK answers
 and connects automatically; **Decline**/**End**/mute/hold from the system UI are
 handled too. You write no calling code for this.
 
+Both platforms behave identically, over the same Dart API:
+
+| | iOS | Android |
+|---|---|---|
+| Ring when killed | APNs **VoIP push (PushKit)** → CallKit, raised natively before Dart wakes | High-priority **FCM data** message → `ConnectionService` |
+| Incoming UI | System **CallKit** screen, over the lock screen | Self-managed Telecom + full-screen call notification |
+| Answer | Answered in the system UI; media connects in the app engine | Same |
+| Caller cancels | Ring becomes a **missed call** (system Recents + notification) | Ring becomes a **missed call** (call log + notification) |
+| In-call audio | **CallKit owns the audio session**; LiveKit's engine runs only inside its activate/deactivate window | LiveKit manages audio directly |
+
 You call `Nexus.instance.voice.handleIncomingPush(data)` only if you want to
 drive the ringer from your own data-message handler; the bundled native layer
 already handles the standard VoIP path.
+
+> `Nexus.init(...)` must run **at app start** (in `main()`), not behind a splash
+> or a login gate. A VoIP push launches a killed iOS app in the background, and
+> the answer the user taps is held by the native layer only until Dart attaches.
 
 ### One-time platform setup (OS requirements, not code)
 
 These are OS-level capabilities the app must declare — unavoidable for any VoIP
 app, and all you need to do:
 
-- **iOS**: enable the **Voice over IP** + **Remote notifications** background
-  modes, add the **Push Notifications** capability, and upload your **APNs key**
-  in the Nexus console (Push settings). PushKit + CallKit are handled by the SDK.
-- **Android**: FCM is already configured for `firebase_messaging`; the SDK shows
-  the full-screen incoming-call notification. Add the `USE_FULL_SCREEN_INTENT`
-  permission on Android 14+.
+**iOS** — in Xcode, under *Signing & Capabilities*:
+
+- Add the **Push Notifications** capability.
+- Add **Background Modes** and tick **Voice over IP** and **Audio, AirPlay, and
+  Picture in Picture**. In `Info.plist` this is:
+  ```xml
+  <key>UIBackgroundModes</key>
+  <array>
+    <string>voip</string>
+    <string>audio</string>
+  </array>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Used for voice calls.</string>
+  ```
+  **`NSMicrophoneUsageDescription` is not optional.** Without it iOS does not
+  merely refuse the microphone — it *terminates the app* (a TCC privacy
+  violation) the moment a call opens audio, and `requestAccess` silently returns
+  false without ever showing a dialog. The SDK detects the missing key, logs it,
+  and holds the microphone shut so calls stay receive-only instead of crashing —
+  but only adding the key makes the device transmit.
+  **Without `voip` the SDK skips PushKit entirely** (it logs why) and incoming
+  calls cannot ring a backgrounded or killed app.
+- Upload your **APNs key** (`.p8`) in the Nexus console → Push settings. The
+  backend sends the ring to the `<bundleId>.voip` topic; the same key serves both
+  normal pushes and VoIP, so there is nothing extra to configure.
+- Optional: set `NexusCallAppName` in `Info.plist` to override the name CallKit
+  shows on the call screen (it defaults to your app's display name). Drop a
+  `NexusCallIcon` image in the asset catalog to set the CallKit icon.
+
+PushKit, CallKit, the audio session and the missed-call entry are all handled by
+the SDK.
+
+> **Ask for the microphone during onboarding** — call
+> `await Nexus.instance.voice.ensurePermissions()` from a screen the user is
+> looking at. A call answered from the CallKit screen often runs in a *background*
+> launch, where iOS shows no permission dialog at all; the SDK will connect such a
+> call anyway and open the mic the moment access is granted (it re-asks on every
+> foreground), but until then the caller cannot hear this device. If the user has
+> already refused, iOS never asks again — send them to Settings with
+> `Nexus.instance.voice.openMicrophoneSettings()`. Note that **CallKit is unavailable in mainland China** — calls there
+fall back to the in-app call UI.
+
+**Android** — FCM is already configured for `firebase_messaging`; the SDK shows
+the full-screen incoming-call notification. Add the `USE_FULL_SCREEN_INTENT`
+permission on Android 14+.
 
 ### Advanced (optional)
 

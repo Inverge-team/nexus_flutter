@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:livekit_client/livekit_client.dart' as lk;
 
 import '../logging.dart';
+import 'ios_audio.dart';
 import 'voice_engine.dart';
 import 'voice_models.dart';
 
@@ -53,7 +54,27 @@ class LiveKitVoiceEngine implements NexusVoiceEngine {
     _room = room;
     _listener = listener;
     await room.connect(token.url, token.token);
-    await room.localParticipant?.setMicrophoneEnabled(true);
+    // The WebRTC audio device module only exists once a room does, so this is the
+    // first moment the iOS CallKit audio gate can actually be applied (see
+    // [NexusCallAudio]). No-op off iOS.
+    await NexusCallAudio.applyPending();
+    if (NexusCallAudio.microphoneAvailable) {
+      try {
+        await room.localParticipant?.setMicrophoneEnabled(true);
+      } catch (e) {
+        // Do NOT fail the call over it: the room is already connected, so the
+        // user can still HEAR the other party, and the mic opens as soon as
+        // access is granted (the voice service retries on the next foreground).
+        NexusLog.error('livekit: microphone could not be opened ($e) — the call is '
+            'connected but this device is not transmitting. Grant microphone access '
+            '(Nexus.instance.voice.openMicrophoneSettings()).');
+      }
+    } else {
+      // Deliberately not even attempted: on iOS, opening the mic without
+      // authorization terminates the app via TCC rather than throwing.
+      NexusLog.error('livekit: joining RECEIVE-ONLY — no microphone access. The other '
+          'party will not hear this device until it is granted.');
+    }
     emitRemote();
   }
 
@@ -68,6 +89,7 @@ class LiveKitVoiceEngine implements NexusVoiceEngine {
     }
     _listener = null;
     _room = null;
+    NexusCallAudio.reset(); // the audio gate belongs to a live session only
   }
 
   @override

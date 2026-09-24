@@ -268,6 +268,100 @@ class MethodChannelNexus extends NexusPlatform {
     }
   }
 
+  @override
+  Future<void> voiceReportOutgoing({
+    required String callId,
+    required String to,
+    String? displayName,
+  }) async {
+    try {
+      await methodChannel.invokeMethod('voiceReportOutgoing', {
+        'callId': callId,
+        'to': to,
+        'displayName': displayName,
+      });
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> voiceReportConnected(String callId) async {
+    try {
+      await methodChannel.invokeMethod('voiceReportConnected', {'callId': callId});
+    } catch (_) {}
+  }
+
+  @override
+  Future<String?> voiceVoipToken() async {
+    try {
+      return await methodChannel.invokeMethod<String>('voiceVoipToken');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void Function(String action, String callId, Object? value)? _callControlSink;
+  void Function(bool active)? _audioSessionSink;
+  void Function(Map<String, dynamic> data)? _voicePushSink;
+  void Function(String token)? _voipTokenSink;
+  // A VoIP push can ring (and the user can answer) during a cold launch, before
+  // the voice service attaches — buffer the latest so nothing is dropped.
+  Map<String, dynamic>? _pendingVoicePush;
+  String? _pendingVoipToken;
+
+  @override
+  void onNativeCallControl(void Function(String action, String callId, Object? value) sink) =>
+      _callControlSink = sink;
+
+  @override
+  void onNativeCallAudioSession(void Function(bool active) sink) => _audioSessionSink = sink;
+
+  @override
+  void onNativeVoicePush(void Function(Map<String, dynamic> data) sink) {
+    _voicePushSink = sink;
+    final p = _pendingVoicePush;
+    if (p != null) {
+      _pendingVoicePush = null;
+      sink(p);
+    }
+  }
+
+  @override
+  void onNativeVoipToken(void Function(String token) sink) {
+    _voipTokenSink = sink;
+    final t = _pendingVoipToken;
+    if (t != null) {
+      _pendingVoipToken = null;
+      sink(t);
+    }
+  }
+
+  @override
+  Future<bool> appIsForeground() async {
+    try {
+      return await methodChannel.invokeMethod<bool>('appIsForeground') ?? true;
+    } catch (_) {
+      return true; // unimplemented on this platform — assume foreground
+    }
+  }
+
+  @override
+  Future<String?> micPermissionStatus() async {
+    try {
+      return await methodChannel.invokeMethod<String>('micPermissionStatus');
+    } catch (_) {
+      return null; // unimplemented — caller falls back to permission_handler
+    }
+  }
+
+  @override
+  Future<bool?> micRequestPermission() async {
+    try {
+      return await methodChannel.invokeMethod<bool>('micRequestPermission');
+    } catch (_) {
+      return null; // unimplemented — caller falls back to permission_handler
+    }
+  }
+
   Future<dynamic> _handleNative(MethodCall call) async {
     if (call.method == 'onReplayBatch') {
       final args = (call.arguments as Map);
@@ -291,6 +385,34 @@ class MethodChannelNexus extends NexusPlatform {
         _callSink!.call(action, callId);
       } else {
         _pendingCall = [action, callId]; // replay when the listener attaches
+      }
+    } else if (call.method == 'onCallMute' || call.method == 'onCallHold' || call.method == 'onCallDtmf') {
+      // In-call controls driven from the iOS system call UI (CallKit).
+      final args = _decode(call.arguments);
+      final action = call.method == 'onCallMute'
+          ? 'mute'
+          : call.method == 'onCallHold'
+              ? 'hold'
+              : 'dtmf';
+      _callControlSink?.call(action, (args['callId'] as String?) ?? '', args['value']);
+    } else if (call.method == 'onCallAudioSession') {
+      final args = _decode(call.arguments);
+      _audioSessionSink?.call(args['active'] == true);
+    } else if (call.method == 'onVoicePush') {
+      final args = _decode(call.arguments);
+      if (_voicePushSink != null) {
+        _voicePushSink!.call(args);
+      } else {
+        _pendingVoicePush = args; // replay when the voice service attaches
+      }
+    } else if (call.method == 'onVoipToken') {
+      final args = _decode(call.arguments);
+      final token = (args['token'] as String?) ?? '';
+      if (token.isEmpty) return null;
+      if (_voipTokenSink != null) {
+        _voipTokenSink!.call(token);
+      } else {
+        _pendingVoipToken = token;
       }
     }
     return null;

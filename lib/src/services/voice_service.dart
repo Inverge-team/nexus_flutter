@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:audioplayers/audioplayers.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../nexus_platform_interface.dart';
@@ -14,6 +15,7 @@ import '../logging.dart';
 import 'realtime_service.dart';
 import '../voice/callkit.dart';
 import '../voice/callkit_native.dart';
+import '../voice/ios_audio.dart';
 import '../voice/ivr.dart';
 import '../voice/livekit_engine.dart';
 import '../voice/voice_engine.dart';
@@ -51,6 +53,7 @@ class NexusVoice {
   StreamSubscription<CallKitAction>? _callKitSub;
   Timer? _presence;
   Timer? _ringTimeout;
+  AppLifecycleListener? _lifecycle;
   // After we answer, the caller may already have hung up (left the media room),
   // so no remote participant ever appears and the call is stuck "connecting".
   // This ends it if nobody shows up shortly after we join.
@@ -61,14 +64,20 @@ class NexusVoice {
   // the client taps answer) doesn't try to join a dead call and hang forever.
   final Set<String> _recentlyEnded = <String>{};
 
-  /// Dismiss the native Android call UI (our self-managed ConnectionService ring
-  /// + ongoing notification). MUST run on every end path or a cancelled/ended
-  /// call stays on screen and answerable. No-op off Android (iOS uses callkit).
+  /// Dismiss the native call UI — Android's self-managed ConnectionService ring
+  /// + ongoing notification, or the iOS CallKit call. MUST run on every end path
+  /// or a cancelled/ended call stays on screen and answerable. Idempotent: the
+  /// native side ignores a call it no longer tracks.
   void _dismissNativeCall(String sessionId) {
-    if (!kIsWeb && Platform.isAndroid) {
+    if (_hasNativeCallUi) {
       unawaited(_guard(() => NexusPlatform.instance.voiceEndCall(sessionId)));
     }
   }
+
+  /// Both mobile platforms ship a real native call stack behind the SAME
+  /// method-channel contract: a self-managed Telecom ConnectionService on
+  /// Android, CallKit + PushKit on iOS. Everything below drives them identically.
+  static bool get _hasNativeCallUi => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
   void _markEnded(String sessionId) {
     _recentlyEnded.add(sessionId);
@@ -92,14 +101,16 @@ class NexusVoice {
     if (_initialised) return;
     _initialised = true;
     if (_engine is NoopVoiceEngine) useEngine(LiveKitVoiceEngine());
-    if (_callKit is NoopCallKit) useCallKit(CallKitNativeHandler());
-    // Android: register our OWN self-managed Telecom account so incoming calls
-    // ring in the system UI and are answered natively (headless media, no app
-    // launch). iOS keeps using CallKit via the callkit handler.
-    if (!kIsWeb && Platform.isAndroid) {
+    if (_callKit is NoopCallKit) useCallKit(NexusNativeCallKit());
+    // Register our OWN native call account so incoming calls ring in the system
+    // UI and are answered natively: a self-managed Telecom PhoneAccount on
+    // Android, a CXProvider + PushKit VoIP registry on iOS. One contract, one
+    // Dart code path.
+    if (_hasNativeCallUi) {
       unawaited(NexusPlatform.instance.voiceRegisterAccount());
-      // Answer/decline taken in the NATIVE call UI (notification or lock-screen
-      // ring). On answer, connect media in THIS (main) engine — the proven path.
+      // Answer/decline taken in the NATIVE call UI (Android's notification /
+      // lock-screen ring, iOS's CallKit screen). On answer, connect media in
+      // THIS (main) engine — the proven path on both platforms.
       NexusPlatform.instance.onNativeCallEvent((action, callId) {
         NexusLog.info('voice: native call action=$action call=$callId');
         if (action == 'answer') {
@@ -109,6 +120,28 @@ class NexusVoice {
         }
       });
     }
+    if (!kIsWeb && Platform.isIOS) {
+      // CallKit owns the AVAudioSession: LiveKit must never activate it, and its
+      // audio engine may only run inside CallKit's activate/deactivate window.
+      unawaited(NexusCallAudio.prepare());
+      NexusPlatform.instance.onNativeCallAudioSession(
+        (active) => unawaited(NexusCallAudio.setActive(active)),
+      );
+      // The ring itself is raised natively from the APNs VoIP payload, before
+      // Dart wakes up. This is that same payload — so the call state, the caller
+      // name and a decline-before-answer all behave exactly as on Android.
+      NexusPlatform.instance.onNativeVoicePush((data) {
+        if (data['type'] == 'cancel_call') {
+          // Native already turned the ring into a missed call — reconcile state.
+          _onRemoteEnd(data, VoiceCallState.cancelled, 'cancelled');
+        } else {
+          unawaited(handleIncomingPush(data, alreadyRinging: true));
+        }
+      });
+      // PushKit hands us the VoIP token asynchronously (and rotates it) —
+      // register it the moment it lands so a killed app can be rung.
+      NexusPlatform.instance.onNativeVoipToken((t) => unawaited(registerPushToken(voipToken: t)));
+    }
     _listenForIncoming();
     // Mic permission MUST already be granted BEFORE an incoming call arrives: a
     // call is answered from a killed/background/cold-launch context where the OS
@@ -116,34 +149,18 @@ class NexusVoice {
     // silently fails and the callee never joins audio (the caller sees "no
     // answer"). Pre-warm it now — we're in the foreground at startup, the one
     // moment the dialog can actually appear. WhatsApp does the same up front.
-    unawaited(_ensureMicPermission());
-    // If the app was cold-launched / foregrounded by the user ACCEPTING an
-    // incoming call from the native UI, join it NOW. This is time-critical, so
-    // it must NOT wait behind device registration (whose token-retry loop can
-    // block for tens of seconds — long enough for the caller to give up).
-    unawaited(_answerColdLaunchAccept());
-    unawaited(_registerDevice());
-  }
-
-  /// After a cold launch from a native "accept", the accepted flag may not be
-  /// visible the very instant we start — poll briefly, then answer.
-  Future<void> _answerColdLaunchAccept() async {
-    final ck = _callKit;
-    if (ck is! CallKitNativeHandler) return;
-    NexusLog.info('voice: checking for a cold-launch accepted call…');
-    for (var i = 0; i < 12; i++) {
-      final accepted = await ck.acceptedCallId();
-      if (accepted != null) {
-        NexusLog.info('voice: cold-launch accepted call $accepted — answering');
-        await answer(accepted);
-        return;
-      }
-      // Stop polling once a live call is already being handled by the event path.
-      final c = current.value;
-      if (c != null && c.legId != null && c.state.isActive) return;
-      await Future<void>.delayed(const Duration(milliseconds: 400));
+    unawaited(_prewarmMic());
+    // …and again whenever the app comes to the foreground, which is the first
+    // moment a call answered from a background launch can still get the mic.
+    try {
+      _lifecycle = AppLifecycleListener(onResume: () => unawaited(_prewarmMic()));
+    } catch (e) {
+      NexusLog.debug('voice: lifecycle listener unavailable: $e');
     }
-    NexusLog.warn('voice: no cold-launch accepted call found after polling');
+    // A cold launch driven by ACCEPTING a call in the native UI needs no polling:
+    // the platform channel buffers a native "answer" raised before the listener
+    // above attached and replays it the instant it does — on both platforms.
+    unawaited(_registerDevice());
   }
 
   bool _fcmWired = false;
@@ -238,7 +255,7 @@ class NexusVoice {
       // Caller gave up before we answered → leave a native "Missed call".
       final from = (data['from'] ?? data['callerNumber'] ?? call?.remoteAddress ?? '').toString();
       final name = (data['callerName'] ?? call?.remoteName) as String?;
-      if (!kIsWeb && Platform.isAndroid) {
+      if (_hasNativeCallUi) {
         unawaited(_guard(() =>
             NexusPlatform.instance.voiceMissedCall(callId: sid, from: from, displayName: name)));
       } else {
@@ -268,6 +285,8 @@ class NexusVoice {
 
   /// Advanced override — replace the built-in native call UI.
   void useCallKit(NexusCallKit callKit) {
+    final previous = _callKit;
+    if (previous is NexusNativeCallKit) previous.dispose();
     _callKit = callKit;
     _callKitSub?.cancel();
     _callKitSub = _callKit.actions.listen(_onCallKitAction);
@@ -338,17 +357,117 @@ class NexusVoice {
   /// A call has NO audio without microphone access, and WebRTC's getUserMedia
   /// fails with NotAllowedError if it isn't granted. Request it (turnkey) before
   /// joining any media room.
-  Future<bool> _ensureMicPermission() async {
+  Future<bool> _ensureMicPermission({bool allowPrompt = true}) async {
     try {
+      // Ask the OS directly first. `permission_handler` cannot express what we
+      // need on iOS: it reports "never asked" as denied, and returns
+      // `permanentlyDenied` for ANY request that comes back false — including one
+      // made from the background, where iOS presents no dialog and refuses
+      // immediately WITHOUT recording a denial. Treating that as a permanent
+      // refusal would give up on a permission the user has never even seen.
+      final native = await NexusPlatform.instance.micPermissionStatus();
+      if (native != null && native != 'granted') {
+        NexusLog.info('voice: microphone status=$native (prompt ${allowPrompt ? 'allowed' : 'suppressed'})');
+      }
+      if (native == 'granted') return _micResult(true);
+      if (native == 'missing_usage_description') {
+        NexusLog.error('voice: NSMicrophoneUsageDescription is MISSING from the app\'s '
+            'Info.plist. iOS TERMINATES the app (TCC privacy violation) the instant a '
+            'call opens the microphone, so the SDK is holding the mic shut: calls '
+            'connect and you can hear the other party, but this device cannot '
+            'transmit. Add NSMicrophoneUsageDescription to ios/Runner/Info.plist.');
+        return _micResult(false);
+      }
+      if (native == 'denied' || native == 'restricted') {
+        NexusLog.warn('voice: microphone permission is blocked in system settings — '
+            'the other party will not hear this device. The OS will not ask again; '
+            'send the user to Settings with Nexus.instance.voice.openMicrophoneSettings().');
+        return _micResult(false);
+      }
+
+      if (native == 'undetermined') {
+        if (!allowPrompt) return _micResult(false);
+        // A dialog can only appear in the FOREGROUND — and a VoIP push waking a
+        // killed app is exactly a background launch. The native side refuses to
+        // ask there rather than burning the one-shot prompt on a request iOS
+        // cannot present; [_prewarmMic] retries on the next foreground.
+        final granted = await NexusPlatform.instance.micRequestPermission();
+        if (granted != null) {
+          if (!granted) {
+            NexusLog.warn('voice: microphone not granted — the other party will not hear '
+                'this device. If the user refused, iOS will not ask again: send them to '
+                'Settings with Nexus.instance.voice.openMicrophoneSettings().');
+          }
+          return _micResult(granted);
+        }
+        // Native request unavailable (Android) — fall through to permission_handler.
+      }
+
       var status = await Permission.microphone.status;
-      if (!status.isGranted) status = await Permission.microphone.request();
+      if (status.isGranted) return _micResult(true);
+      if (!allowPrompt) return _micResult(false);
+      // A permission dialog can only appear in the FOREGROUND — and a VoIP push
+      // waking a killed app is exactly a background launch. Asking there returns
+      // an instant refusal that means nothing. Defer to the next foreground,
+      // where [_prewarmMic] retries.
+      if (!await NexusPlatform.instance.appIsForeground()) {
+        NexusLog.info('voice: microphone request deferred — the app is in the background '
+            '(no dialog can be shown); it will be requested on the next foreground');
+        return _micResult(false);
+      }
+      status = await Permission.microphone.request();
       if (!status.isGranted) {
         NexusLog.warn('voice: microphone permission $status — cannot join call audio');
       }
-      return status.isGranted;
+      return _micResult(status.isGranted);
     } catch (e) {
       NexusLog.warn('voice: mic permission check failed: $e');
       return true; // don't hard-block on a plugin error — let getUserMedia try
+    }
+  }
+
+  /// Publish the outcome of a permission check to the audio layer, which gates
+  /// the media engine's INPUT side on it. Returns [granted] so checks can
+  /// `return _micResult(...)` directly.
+  bool _micResult(bool granted) {
+    unawaited(NexusCallAudio.setMicrophoneGranted(granted));
+    return granted;
+  }
+
+  /// Ask for the microphone at the first moment the OS can actually show the
+  /// dialog. Runs on voice init and again on every foreground, so a call that
+  /// woke the app in the background (where asking is impossible) still ends up
+  /// with permission the next time the user opens the app. No-op once granted.
+  Future<void> _prewarmMic() async {
+    if (await NexusPlatform.instance.micPermissionStatus() == 'granted') {
+      await _recoverMicForLiveCall();
+      return;
+    }
+    if (await _ensureMicPermission()) await _recoverMicForLiveCall();
+  }
+
+  /// Microphone access arrived while a call was ALREADY up — the classic case
+  /// being a call answered from a background launch (where no dialog could be
+  /// shown) whose user then opened the app and granted it. Open the mic on the
+  /// live call rather than leaving it one-way until the next one. Respects a
+  /// deliberate mute.
+  Future<void> _recoverMicForLiveCall() async {
+    final call = current.value;
+    if (call == null || !call.state.isActive || call.muted) return;
+    NexusLog.info('voice: microphone granted mid-call — opening audio for ${call.sessionId}');
+    await NexusCallAudio.setMicrophoneGranted(true); // re-open the engine's input side
+    await _guard(() => _engine.setMuted(false));
+  }
+
+  /// Open this app's OS settings page so the user can grant the microphone after
+  /// a permanent denial — iOS never re-prompts once the user has refused, so this
+  /// is the only way back. Returns true if the settings page was opened.
+  Future<bool> openMicrophoneSettings() async {
+    try {
+      return await openAppSettings();
+    } catch (e) {
+      NexusLog.warn('voice: could not open app settings: $e');
+      return false;
     }
   }
 
@@ -399,11 +518,20 @@ class NexusVoice {
         startedAt: DateTime.now(),
         metadata: metadata,
       ));
-      // NOTE: we deliberately do NOT start a native OUTGOING call here. On Android
-      // a self-managed outgoing ConnectionService can auto-end and echo back an
-      // "ended" event that would tear down a healthy call; a foreground outbound
-      // call is driven by the app's own UI + the media engine. CallKit is used for
-      // INCOMING calls (the killed-app ringer), where it is essential.
+      // On ANDROID we deliberately do NOT start a native outgoing call: a
+      // self-managed outgoing ConnectionService can auto-end and echo back an
+      // "ended" event that would tear down a healthy call, and a foreground
+      // outbound call is driven by the app's own UI + the media engine.
+      // On iOS the opposite is true and mandatory: CallKit only activates the
+      // audio session for a call it knows about, so an unreported outbound call
+      // would connect with no audio at all.
+      if (!kIsWeb && Platform.isIOS) {
+        unawaited(_guard(() => _callKit.reportOutgoing(
+              callId: sessionId,
+              handle: to,
+              displayName: displayName ?? callerDisplayName,
+            )));
+      }
 
       // 1) This device's WebRTC leg → join the media room. Carry our identity so
       // the control plane can tell the callee WHO is calling (the ring's `from`).
@@ -459,7 +587,7 @@ class NexusVoice {
   /// Handle an incoming-call push/data message. Call this from your FCM / VoIP
   /// push handler with the payload the backend sent (`{sessionId, from, ...}`).
   /// Shows the native incoming UI and arms [answer]/[decline].
-  Future<void> handleIncomingPush(Map<String, dynamic> data) async {
+  Future<void> handleIncomingPush(Map<String, dynamic> data, {bool alreadyRinging = false}) async {
     final sessionId = (data['sessionId'] ?? data['session_id']) as String?;
     if (sessionId == null) return;
     // Idempotent: the same call can arrive over BOTH realtime and FCM (foreground),
@@ -480,9 +608,12 @@ class NexusVoice {
       legId: ringLegId,
       startedAt: DateTime.now(),
     ));
-    if (!kIsWeb && Platform.isAndroid) {
-      // Ring in the system UI via our own ConnectionService (answered natively,
-      // headless media, no app launch).
+    // On iOS the VoIP push already raised the CallKit ring natively before Dart
+    // woke up — reporting the same call again would be rejected as a duplicate.
+    if (alreadyRinging) return;
+    if (_hasNativeCallUi) {
+      // Ring in the SYSTEM call UI via our own native stack (ConnectionService on
+      // Android, CallKit on iOS) — answered natively, no app launch required.
       await _guard(() => NexusPlatform.instance.voiceReportIncoming(
             callId: sessionId,
             from: from,
@@ -521,9 +652,22 @@ class NexusVoice {
     if (_answeringSessionId == call.sessionId) return;
     _answeringSessionId = call.sessionId;
     NexusLog.info('voice: answering call ${call.sessionId}');
-    if (!await _ensureMicPermission()) {
-      _fail(call.sessionId, 'microphone_denied');
-      return;
+    // Do NOT prompt here: answering happens from the system call UI, often in a
+    // background launch where the dialog cannot appear and the answer is an
+    // instant meaningless refusal.
+    if (!await _ensureMicPermission(allowPrompt: false)) {
+      if (!kIsWeb && Platform.isIOS) {
+        // iOS: the user just accepted this call on the CallKit screen. Failing it
+        // over a permission we were never able to ask for would drop a live call,
+        // so join anyway — LiveKit opens the mic the moment access is granted,
+        // and the call is audible in the meantime in the other direction.
+        NexusLog.error('voice: answering WITHOUT confirmed microphone access — the caller '
+            'may not hear this device. Call Nexus.instance.voice.ensurePermissions() '
+            'during onboarding so the prompt happens while the app is open.');
+      } else {
+        _fail(call.sessionId, 'microphone_denied');
+        return;
+      }
     }
     try {
       _set(call.copyWith(state: VoiceCallState.connecting));
@@ -945,6 +1089,8 @@ class NexusVoice {
   String? _id(Object? obj) => obj is Map && obj['id'] is String ? obj['id'] as String : null;
 
   void dispose() {
+    _lifecycle?.dispose();
+    _lifecycle = null;
     _engineSub?.cancel();
     _remoteSub?.cancel();
     _qualitySub?.cancel();

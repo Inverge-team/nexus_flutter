@@ -1,3 +1,72 @@
+## 1.6.0
+
+**Voice calling now works end-to-end on iOS, at full parity with Android.** iOS gets
+its own native calling stack — `NexusVoiceManager.swift` (CallKit `CXProvider` +
+PushKit VoIP registry + missed-call notifications), the twin of Android's
+self-managed Telecom stack. **One Dart codebase drives both platforms** over the same
+method-channel contract; Android behavior is unchanged.
+
+### Added — native iOS calling
+- **Killed-app ring over PushKit.** An APNs VoIP push is reported to CallKit
+  natively, before the Flutter engine is even up — so the ring is never gated on
+  Dart startup. PushKit is registered at launch (requires the `voip` background
+  mode; the SDK skips it and logs why if the mode is absent).
+- **Full in-call control from the system UI** — answer / decline / hangup / mute /
+  hold / DTMF flow into the same handlers Android uses. A cold-launch answer (user
+  accepts before the engine is ready) is **buffered natively and replayed** the
+  moment the voice service attaches.
+- **Caller cancels → missed call.** The ring ends as unanswered (in system Recents)
+  and leaves a "Missed call" notification, like Android. The backend now sends the
+  cancel to iOS as its own VoIP push (report-then-end, as PushKit requires) rather
+  than skipping iOS — so a killed device stops ringing instead of ringing on.
+- `Nexus.instance.voice.openMicrophoneSettings()` — deep-links to the app's Settings
+  page for the one case iOS never re-prompts (a real permanent denial).
+
+### Changed
+- **CallKit owns the audio session.** LiveKit runs in `externalCallSystem` mode and
+  its audio engine is gated on CallKit's activate/deactivate window — the fix for the
+  classic "connected but silent" CallKit bug. Outgoing calls **must** be reported to
+  CallKit on iOS (or the session is never activated); Android still deliberately skips
+  native outgoing calls.
+- **`flutter_callkit_incoming` removed.** Neither platform depends on a third-party
+  calling package any more — both are fully native. `useCallKit(...)` remains as an
+  advanced override seam.
+- **Microphone is requested through iOS's own `AVCaptureDevice` API**, not a
+  permission package. On iOS those packages report "never asked" as *denied*, report a
+  failed request as a *permanent* denial, and can be **compiled out by a Podfile flag**
+  — in which case they answer "denied" without the OS ever being asked, so no dialog
+  ever appears and the permission never even shows up in Settings. A calling SDK
+  cannot carry that ambiguity. Android is unchanged and still uses `permission_handler`.
+  - The mic is now prewarmed on `voice.init()` and again on **every foreground
+    resume**, so it is granted in a foreground session before the first call — a call
+    answered from a background VoIP launch can show no dialog at all.
+  - Input and output are gated **separately**: with no mic the call still connects and
+    plays the other party (receive-only), and the mic is opened **mid-call** the
+    instant access is granted — no need to redial.
+
+### Fixed
+- **iOS calls connected but the caller heard nothing.** With the mic never granted in
+  a foreground session, the call joined receive-only and published no audio track;
+  the mic also never appeared under Settings because iOS had never actually been
+  asked. Both are resolved by the native `AVCaptureDevice` request + foreground
+  prewarm above. (If you still see it: launch the app from its icon once and accept
+  the prompt — the grant cannot happen while answering a call.)
+- **The CallKit audio gate was applied before any media session existed** ("audio
+  device module is unavailable") and so never took effect. It now applies once the
+  room is up, with a **watchdog** that opens the audio engine anyway if CallKit's
+  `didActivate` never fires — a call can no longer be stranded silent.
+- **A call can no longer crash the app over the microphone.** Opening the mic with no
+  `NSMicrophoneUsageDescription` in the host Info.plist terminates the process via TCC;
+  the SDK now detects the missing key natively and reports it instead of letting an
+  unexplained abort happen mid-call. It also warns on a missing `audio` background
+  mode (which silently suspends call audio on screen-lock).
+
+### One-time iOS host-app setup (see README)
+`voip` + `audio` (+ `remote-notification`) background modes,
+`NSMicrophoneUsageDescription`, and an APNs VoIP key in the Nexus console. Everything
+else — CallKit, PushKit, WebRTC media, mic handling — is bundled and turnkey with
+`voiceEnabled: true`.
+
 ## 1.5.0
 
 - **Nexus Voice (CPaaS calling) — turnkey.** Set `voiceEnabled: true` and call;

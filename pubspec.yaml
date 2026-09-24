@@ -1,6 +1,6 @@
 name: nexus_flutter
-description: "Nexus — one Flutter SDK for all Inverge Nexus services (realtime, sessions, events, errors, logs, feature flags, remote config, links, session replay, push notifications)."
-version: 1.6.2
+description: "Nexus — one Flutter SDK for all Inverge Nexus services (realtime, sessions, events, errors, logs, feature flags, remote config, links, session replay, push notifications, voice)."
+version: 1.6.0
 homepage: https://nexus.inverge.net
 repository: https://github.com/Inverge-team/nexus_flutter
 
@@ -22,7 +22,6 @@ dependencies:
   firebase_core: ^4.15.0
   firebase_messaging: ^16.7.0
   livekit_client: ^2.13.0
-  flutter_callkit_incoming: ^3.1.5
   permission_handler: ^13.0.1
   audioplayers: ^6.8.1
 
