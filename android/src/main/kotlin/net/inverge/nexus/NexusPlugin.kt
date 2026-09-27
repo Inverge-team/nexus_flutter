@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -120,6 +121,7 @@ class NexusPlugin :
                             call.argument<String>("callId") ?: "",
                             call.argument<String>("from") ?: "",
                             call.argument<String>("displayName"),
+                            call.argument<String>("avatarUrl"),
                             call.argument<Boolean>("hasVideo") ?: false,
                         )
                     }
@@ -137,6 +139,7 @@ class NexusPlugin :
                     call.argument<String>("callId")?.let {
                         net.inverge.nexus.voice.NexusVoiceManager.missedCall(
                             ctx, it, call.argument<String>("from") ?: "", call.argument<String>("displayName"),
+                            call.argument<String>("avatarUrl"),
                         )
                     }
                 }
@@ -310,10 +313,31 @@ class NexusPlugin :
         return PendingIntent.getActivity(ctx, requestCode, launch, flags)
     }
 
+    /**
+     * The small icon, in the order FCM itself resolves one: the campaign's own
+     * drawable, then the app's `default_notification_icon` manifest meta-data,
+     * then the conventional `ic_stat_notification`/`ic_notification` drawable.
+     * The launcher icon is the last resort only — Android masks a small icon by
+     * its alpha channel, so a full-colour launcher icon draws as a blank square.
+     */
     private fun resolveSmallIcon(ctx: Context, name: String?): Int {
-        val byName = resolveDrawable(ctx, name)
-        if (byName != 0) return byName
+        resolveDrawable(ctx, name).let { if (it != 0) return it }
+        manifestNotificationIcon(ctx).let { if (it != 0) return it }
+        for (conventional in arrayOf("ic_stat_notification", "ic_notification")) {
+            resolveDrawable(ctx, conventional).let { if (it != 0) return it }
+        }
         return if (ctx.applicationInfo.icon != 0) ctx.applicationInfo.icon else android.R.drawable.ic_dialog_info
+    }
+
+    /** `com.google.firebase.messaging.default_notification_icon` from the manifest, or 0. */
+    private fun manifestNotificationIcon(ctx: Context): Int = try {
+        ctx.packageManager
+            .getApplicationInfo(ctx.packageName, PackageManager.GET_META_DATA)
+            .metaData
+            ?.getInt("com.google.firebase.messaging.default_notification_icon", 0)
+            ?: 0
+    } catch (_: Throwable) {
+        0
     }
 
     private fun resolveDrawable(ctx: Context, name: String?): Int {

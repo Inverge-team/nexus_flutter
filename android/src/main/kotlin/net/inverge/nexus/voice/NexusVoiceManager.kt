@@ -65,6 +65,7 @@ object NexusVoiceManager {
         callId: String,
         fromHandle: String,
         displayName: String?,
+        avatarUrl: String?,
         hasVideo: Boolean,
     ) {
         val tm = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
@@ -80,6 +81,7 @@ object NexusVoiceManager {
                     putString(EXTRA_CALL_ID, callId)
                     putString(EXTRA_FROM, fromHandle)
                     putString(EXTRA_DISPLAY_NAME, displayName)
+                    putString(EXTRA_AVATAR, avatarUrl)
                     putBoolean(EXTRA_HAS_VIDEO, hasVideo)
                 },
             )
@@ -104,12 +106,12 @@ object NexusVoiceManager {
 
     /** The caller cancelled while we were still ringing — end the ring as MISSED
      *  and leave a "Missed call" notification, like a native phone call. */
-    fun missedCall(context: Context, callId: String, from: String, displayName: String?) {
+    fun missedCall(context: Context, callId: String, from: String, displayName: String?, avatarUrl: String? = null) {
         connections[callId]?.markMissed()
         // Also cancel the ring directly — a killed-app cancel push may arrive with
         // no tracked connection, but the ring notification must still clear.
         NexusCallNotification.cancel(context, callId)
-        NexusCallNotification.showMissed(context, callId, from, displayName)
+        NexusCallNotification.showMissed(context, callId, from, displayName, avatarUrl)
     }
 
     /** Bring the app to the foreground and tell it to answer [callId] in the main
@@ -137,6 +139,7 @@ object NexusVoiceManager {
     const val EXTRA_CALL_ID = "nexus.callId"
     const val EXTRA_FROM = "nexus.from"
     const val EXTRA_DISPLAY_NAME = "nexus.displayName"
+    const val EXTRA_AVATAR = "nexus.avatar"
     const val EXTRA_HAS_VIDEO = "nexus.hasVideo"
 
     /** Launch-intent extra carrying the call id the app should auto-answer. */

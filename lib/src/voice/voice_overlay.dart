@@ -126,6 +126,11 @@ class _CallScreen extends StatelessWidget {
             CircleAvatar(
               radius: 52,
               backgroundColor: const Color(0xFF1E3550),
+              // Show the caller's avatar when we have one (falls back to the
+              // initial if the URL is missing or fails to load).
+              foregroundImage: (call.remoteAvatar != null && call.remoteAvatar!.isNotEmpty)
+                  ? NetworkImage(call.remoteAvatar!)
+                  : null,
               child: Text(
                 _title.isNotEmpty ? _title.characters.first.toUpperCase() : '?',
                 style: const TextStyle(fontSize: 40, color: Colors.white),

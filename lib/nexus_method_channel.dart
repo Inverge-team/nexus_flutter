@@ -224,6 +224,7 @@ class MethodChannelNexus extends NexusPlatform {
     required String callId,
     required String from,
     String? displayName,
+    String? avatarUrl,
     bool hasVideo = false,
   }) async {
     try {
@@ -231,6 +232,7 @@ class MethodChannelNexus extends NexusPlatform {
         'callId': callId,
         'from': from,
         'displayName': displayName,
+        'avatarUrl': avatarUrl,
         'hasVideo': hasVideo,
       });
     } catch (_) {}
@@ -248,12 +250,14 @@ class MethodChannelNexus extends NexusPlatform {
     required String callId,
     required String from,
     String? displayName,
+    String? avatarUrl,
   }) async {
     try {
       await methodChannel.invokeMethod('voiceMissedCall', {
         'callId': callId,
         'from': from,
         'displayName': displayName,
+        'avatarUrl': avatarUrl,
       });
     } catch (_) {}
   }

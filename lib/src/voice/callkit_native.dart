@@ -53,6 +53,7 @@ class NexusNativeCallKit implements NexusCallKit {
     required String callId,
     required String handle,
     String? displayName,
+    String? avatarUrl,
     bool hasVideo = false,
   }) async {
     if (!_active) return;
@@ -60,6 +61,7 @@ class NexusNativeCallKit implements NexusCallKit {
       callId: callId,
       from: handle,
       displayName: displayName,
+      avatarUrl: avatarUrl,
       hasVideo: hasVideo,
     );
   }
@@ -119,8 +121,10 @@ Future<void> showNexusIncomingCall(Map<dynamic, dynamic> data) async {
   if (id.isEmpty) return;
   final from = (data['from'] ?? data['callerNumber'] ?? '') as String? ?? '';
   final name = data['callerName'] as String?;
+  final avatar = (data['callerAvatar'] ?? data['avatarUrl']) as String?;
   try {
-    await NexusPlatform.instance.voiceReportIncoming(callId: id, from: from, displayName: name);
+    await NexusPlatform.instance
+        .voiceReportIncoming(callId: id, from: from, displayName: name, avatarUrl: avatar);
   } catch (e) {
     // Background isolate — NexusLog isn't configured here; keep a minimal
     // failure breadcrumb (visible in logcat as I/flutter) for field debugging.

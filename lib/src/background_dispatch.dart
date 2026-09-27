@@ -41,6 +41,7 @@ Future<void> nexusUnifiedBackgroundHandler(RemoteMessage message) async {
         callId: callId,
         from: (d['from'] ?? d['callerNumber'] ?? '') as String? ?? '',
         displayName: d['callerName'] as String?,
+        avatarUrl: (d['callerAvatar'] ?? d['avatarUrl']) as String?,
       );
     }
     return;
@@ -57,6 +58,7 @@ Future<void> nexusUnifiedBackgroundHandler(RemoteMessage message) async {
         callId: callId,
         from: (d['from'] ?? d['callerNumber'] ?? '') as String? ?? '',
         displayName: d['callerName'] as String?,
+        avatarUrl: (d['callerAvatar'] ?? d['avatarUrl']) as String?,
       );
     }
     return;

@@ -127,6 +127,7 @@ abstract class NexusPlatform extends PlatformInterface {
     required String callId,
     required String from,
     String? displayName,
+    String? avatarUrl,
     bool hasVideo = false,
   }) async {}
 
@@ -139,6 +140,7 @@ abstract class NexusPlatform extends PlatformInterface {
     required String callId,
     required String from,
     String? displayName,
+    String? avatarUrl,
   }) async {}
 
   /// Register a sink for native call actions the user took in the SYSTEM UI.

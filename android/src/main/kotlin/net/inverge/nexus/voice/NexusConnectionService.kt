@@ -26,9 +26,10 @@ class NexusConnectionService : ConnectionService() {
         val callId = extras?.getString(NexusVoiceManager.EXTRA_CALL_ID).orEmpty()
         val from = extras?.getString(NexusVoiceManager.EXTRA_FROM).orEmpty()
         val name = extras?.getString(NexusVoiceManager.EXTRA_DISPLAY_NAME)
+        val avatar = extras?.getString(NexusVoiceManager.EXTRA_AVATAR)
         val hasVideo = extras?.getBoolean(NexusVoiceManager.EXTRA_HAS_VIDEO) ?: false
 
-        val connection = NexusConnection(applicationContext, callId, from, name)
+        val connection = NexusConnection(applicationContext, callId, from, name, avatar)
         connection.setAddress(request?.address, TelecomManager.PRESENTATION_ALLOWED)
         connection.setCallerDisplayName(
             name ?: from.ifEmpty { "Incoming call" },

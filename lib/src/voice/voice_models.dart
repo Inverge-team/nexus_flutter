@@ -109,6 +109,7 @@ class NexusCall {
     this.legId,
     this.remoteAddress,
     this.remoteName,
+    this.remoteAvatar,
     this.muted = false,
     this.onHold = false,
     this.speakerphone = false,
@@ -125,6 +126,7 @@ class NexusCall {
   final VoiceCallState state;
   final String? remoteAddress; // number/identity of the other party
   final String? remoteName;
+  final String? remoteAvatar; // avatar URL of the other party (for the call UI)
   final bool muted;
   final bool onHold;
   final bool speakerphone;
@@ -151,6 +153,7 @@ class NexusCall {
         legId: legId ?? this.legId,
         remoteAddress: remoteAddress,
         remoteName: remoteName,
+        remoteAvatar: remoteAvatar,
         muted: muted ?? this.muted,
         onHold: onHold ?? this.onHold,
         speakerphone: speakerphone ?? this.speakerphone,

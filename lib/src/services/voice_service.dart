@@ -255,9 +255,10 @@ class NexusVoice {
       // Caller gave up before we answered → leave a native "Missed call".
       final from = (data['from'] ?? data['callerNumber'] ?? call?.remoteAddress ?? '').toString();
       final name = (data['callerName'] ?? call?.remoteName) as String?;
+      final avatar = (data['callerAvatar'] ?? data['avatarUrl'] ?? call?.remoteAvatar) as String?;
       if (_hasNativeCallUi) {
-        unawaited(_guard(() =>
-            NexusPlatform.instance.voiceMissedCall(callId: sid, from: from, displayName: name)));
+        unawaited(_guard(() => NexusPlatform.instance
+            .voiceMissedCall(callId: sid, from: from, displayName: name, avatarUrl: avatar)));
       } else {
         _dismissNativeCall(sid);
       }
@@ -490,16 +491,19 @@ class NexusVoice {
     String? callerId,
     String? displayName,
     String? callerDisplayName,
+    String? callerAvatarUrl,
     bool record = false,
     Map<String, dynamic> metadata = const {},
   }) async {
     try {
       if (!await _ensureMicPermission()) return _fail(null, 'microphone_denied');
-      // The name the CALLEE sees for us (rings + call screen). Rides in session
-      // metadata → the backend puts it in the ring payload as `callerName`.
+      // The name + avatar the CALLEE sees for us (rings + call screen). Ride in
+      // session metadata → the backend puts them in the ring payload as
+      // `callerName` / `callerAvatar`.
       final md = <String, dynamic>{
         ...metadata,
         if (callerDisplayName != null && callerDisplayName.isNotEmpty) 'callerName': callerDisplayName,
+        if (callerAvatarUrl != null && callerAvatarUrl.isNotEmpty) 'callerAvatar': callerAvatarUrl,
       };
       final session = await _post('/partner/voice/calls', {
         'direction': 'outbound',
@@ -596,6 +600,7 @@ class NexusVoice {
     if (existing != null && existing.sessionId == sessionId && !existing.state.isTerminal) return;
     final from = (data['from'] ?? data['callerNumber'] ?? '') as String;
     final name = data['callerName'] as String?;
+    final avatar = (data['callerAvatar'] ?? data['avatarUrl']) as String?;
     // The backend's callee placeholder leg — lets a decline BEFORE we answer
     // reach the control plane. Replaced by this device's media leg on answer.
     final ringLegId = (data['legId'] ?? data['leg_id']) as String?;
@@ -605,6 +610,7 @@ class NexusVoice {
       state: VoiceCallState.ringing,
       remoteAddress: from,
       remoteName: name,
+      remoteAvatar: avatar,
       legId: ringLegId,
       startedAt: DateTime.now(),
     ));
@@ -614,13 +620,17 @@ class NexusVoice {
     if (_hasNativeCallUi) {
       // Ring in the SYSTEM call UI via our own native stack (ConnectionService on
       // Android, CallKit on iOS) — answered natively, no app launch required.
+      // (avatarUrl is honoured on Android's notification + ring screen; iOS
+      // CallKit shows name only — the avatar appears in the in-app call UI.)
       await _guard(() => NexusPlatform.instance.voiceReportIncoming(
             callId: sessionId,
             from: from,
             displayName: name,
+            avatarUrl: avatar,
           ));
     } else {
-      await _guard(() => _callKit.reportIncoming(callId: sessionId, handle: from, displayName: name));
+      await _guard(() =>
+          _callKit.reportIncoming(callId: sessionId, handle: from, displayName: name, avatarUrl: avatar));
     }
   }
 

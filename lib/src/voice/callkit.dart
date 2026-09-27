@@ -12,6 +12,7 @@ abstract class NexusCallKit {
     required String callId,
     required String handle,
     String? displayName,
+    String? avatarUrl,
     bool hasVideo = false,
   });
 
@@ -48,7 +49,7 @@ class NoopCallKit implements NexusCallKit {
   @override
   Stream<CallKitAction> get actions => _actions.stream;
   @override
-  Future<void> reportIncoming({required String callId, required String handle, String? displayName, bool hasVideo = false}) async {}
+  Future<void> reportIncoming({required String callId, required String handle, String? displayName, String? avatarUrl, bool hasVideo = false}) async {}
   @override
   Future<void> reportOutgoing({required String callId, required String handle, String? displayName}) async {}
   @override

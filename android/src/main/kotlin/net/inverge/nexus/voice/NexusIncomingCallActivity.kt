@@ -31,6 +31,7 @@ import net.inverge.nexus.R
 class NexusIncomingCallActivity : Activity() {
 
     private var callId: String = ""
+    private var avatarUrl: String? = null
     private val animators = mutableListOf<ValueAnimator>()
 
     // Palette
@@ -51,6 +52,7 @@ class NexusIncomingCallActivity : Activity() {
         val from = intent.getStringExtra(EXTRA_FROM).orEmpty()
         val name = (intent.getStringExtra(EXTRA_NAME)?.takeIf { it.isNotBlank() }
             ?: from.takeIf { it.isNotBlank() } ?: "Unknown caller")
+        avatarUrl = intent.getStringExtra(EXTRA_AVATAR)?.takeIf { it.isNotBlank() }
 
         current = this
         setContentView(buildUi(name))
@@ -169,6 +171,28 @@ class NexusIncomingCallActivity : Activity() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) elevation = dp(10).toFloat()
         }
         stack.addView(avatar)
+
+        // Real caller photo (when provided): load async OVER the initial, which
+        // stays as the fallback if the URL is missing or fails.
+        val url = avatarUrl
+        if (!url.isNullOrBlank()) {
+            val photo = ImageView(this).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                layoutParams = FrameLayout.LayoutParams(avatarSize, avatarSize, Gravity.CENTER)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) elevation = dp(11).toFloat()
+                visibility = View.GONE
+            }
+            stack.addView(photo)
+            Thread {
+                val bmp = NexusCallNotification.loadCircularBitmap(this, url, 6000)
+                if (bmp != null) {
+                    photo.post {
+                        photo.setImageBitmap(bmp)
+                        photo.visibility = View.VISIBLE
+                    }
+                }
+            }.start()
+        }
         return stack
     }
 
@@ -354,6 +378,7 @@ class NexusIncomingCallActivity : Activity() {
         const val EXTRA_CALL_ID = "callId"
         const val EXTRA_FROM = "from"
         const val EXTRA_NAME = "name"
+        const val EXTRA_AVATAR = "avatar"
 
         /** The ring screen currently shown, if any (e.g. over the lock screen). */
         private var current: NexusIncomingCallActivity? = null

@@ -18,6 +18,7 @@ class NexusConnection(
     private val callId: String,
     private val from: String = "",
     private val displayName: String? = null,
+    private val avatarUrl: String? = null,
 ) : Connection() {
 
     init {
@@ -27,12 +28,12 @@ class NexusConnection(
     /** The OS asks a self-managed connection to present its OWN incoming UI here
      *  (the system draws none). Post our lock-screen CallStyle notification. */
     override fun onShowIncomingCallUi() {
-        NexusCallNotification.show(context, callId, from, displayName)
+        NexusCallNotification.show(context, callId, from, displayName, avatarUrl)
     }
 
     /** Also show immediately on ring, in case onShowIncomingCallUi is skipped. */
     fun presentIncomingUi() {
-        NexusCallNotification.show(context, callId, from, displayName)
+        NexusCallNotification.show(context, callId, from, displayName, avatarUrl)
     }
 
     override fun onAnswer() {

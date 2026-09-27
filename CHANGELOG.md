@@ -1,3 +1,20 @@
+## 1.7.0
+
+- **Caller avatar on incoming calls.** Pass `voice.placeCall(callerAvatarUrl: '…')`
+  and the callee sees the caller's photo instead of just their initial.
+  - **Android**: shown on the lock-screen call notification AND the full-screen ring
+    screen — **even when the app is killed / the screen is locked**. The ring is
+    posted instantly with the initial and the photo swaps in the moment it downloads,
+    so the ring is never delayed by the network. Missed-call notifications carry it
+    too. Always falls back to the initial if the URL is missing or unreachable.
+  - **In-app call screen** (both platforms): rendered from `NexusCall.remoteAvatar`.
+  - **iOS**: the system CallKit ring shows the name only (CallKit exposes no per-call
+    image API); the avatar appears on the in-app call screen.
+  - Rides in call metadata as `callerAvatar`, threaded through the incoming push and
+    the realtime `call.incoming` event. **Use an `https` URL** — the native Android
+    loader (unlike Flutter's image loader) blocks cleartext `http` on API 28+. Native
+    avatar loads log to `files/nexus_call.log` for on-device diagnosis.
+
 ## 1.6.0
 
 **Voice calling now works end-to-end on iOS, at full parity with Android.** iOS gets
