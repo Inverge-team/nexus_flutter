@@ -118,7 +118,7 @@ class Nexus {
     errors = NexusErrors(_outbox, _identity, config);
     logs = NexusLogs(_outbox, _identity, config);
     flags = NexusFlags(_http, _identity, config);
-    links = NexusLinks(_http, _identity);
+    links = NexusLinks(_http, _identity, config);
     realtime = NexusRealtime(config, _identity);
     replay = NexusReplay(_outbox, _identity, config);
     surveys = NexusSurveys(_http, _identity, config);
@@ -172,6 +172,10 @@ class Nexus {
       _realtimeWasConnected = true;
       NexusLog.info('realtime auto-connecting');
     }
+
+    // Deep links: install (first launch) + link opens, reported and routed
+    // automatically. After session tracking so attribution joins the session.
+    if (config.linksEnabled) unawaited(links.start());
 
     if (config.replayEnabled) {
       await replay.start();
@@ -382,6 +386,7 @@ class Nexus {
     surveys.dispose();
     inApp.dispose();
     remoteConfig.dispose();
+    links.dispose();
     unawaited(push.dispose());
     realtime.disconnect();
     _outbox.dispose();

@@ -13,6 +13,12 @@ public class NexusPlugin: NSObject, FlutterPlugin {
   private var channel: FlutterMethodChannel?
   private var recorder: NexusReplayRecorder?
 
+  // Deep links seen before Dart asked for them (cold start), then live.
+  private var pendingLinks: [String] = []
+  private var linksLive = false
+  private static let linkHostsKey = "nexus_links_hosts"
+  private static let defaultLinkHost = "services.inverge.net"
+
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "nexus", binaryMessenger: registrar.messenger())
     let instance = NexusPlugin()
@@ -23,6 +29,10 @@ public class NexusPlugin: NSObject, FlutterPlugin {
       }
     }
     registrar.addMethodCallDelegate(instance, channel: channel)
+    // Deep links: see every URL that opens the app (custom scheme + Universal
+    // Links), under both the app-delegate and the UIScene lifecycles.
+    registrar.addApplicationDelegate(instance)
+    registrar.addSceneDelegate(instance)
 
     // Native call events (answer / reject / disconnect / audio session / VoIP
     // push) -> Dart, mirroring the Android plugin's `NexusCallEvents` bridge.
@@ -70,6 +80,16 @@ public class NexusPlugin: NSObject, FlutterPlugin {
       result(Self.micPermissionStatus())
     case "micRequestPermission":
       requestMicrophoneAccess(result)
+    case "linksTakePending":
+      result(pendingLinks)
+      pendingLinks.removeAll()
+      linksLive = true
+    case "linksConfigure":
+      let hosts = (call.arguments as? [String: Any])?["hosts"] as? [String] ?? []
+      UserDefaults.standard.set(hosts.map { $0.lowercased() }, forKey: Self.linkHostsKey)
+      result(nil)
+    case "installReferrer":
+      result(nil) // Apple has no install referrer; installs match server-side.
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -230,5 +250,80 @@ public class NexusPlugin: NSObject, FlutterPlugin {
       info["updateTime"] = Int(modified.timeIntervalSince1970 * 1000)
     }
     return info
+  }
+}
+
+// MARK: - Deep links
+
+extension NexusPlugin: FlutterSceneLifeCycleDelegate {
+  /// Queue (cold start) or forward (live) a URL that opened the app, and report
+  /// whether it is a Nexus SHORT link the SDK consumes. Returning `true` from a
+  /// delegate stops Flutter routing it, so the app's router never receives
+  /// `/l/<slug>` — a path it has no route for. Every other URL is left to the
+  /// router and only reported.
+  @discardableResult
+  private func capture(_ url: URL) -> Bool {
+    let value = url.absoluteString
+    if linksLive {
+      DispatchQueue.main.async { [weak self] in self?.channel?.invokeMethod("onLinkOpened", arguments: value) }
+    } else {
+      pendingLinks.append(value)
+    }
+    return isShortLink(url)
+  }
+
+  /// `/l/<slug>` or `/a/<appId>/<slug>` on a Nexus link host.
+  private func isShortLink(_ url: URL) -> Bool {
+    guard let host = url.host?.lowercased() else { return false }
+    let saved = UserDefaults.standard.stringArray(forKey: Self.linkHostsKey) ?? []
+    guard host == Self.defaultLinkHost || saved.contains(host) else { return false }
+    let s = url.pathComponents.filter { $0 != "/" && !$0.isEmpty }
+    return (s.count == 2 && s[0] == "l") || (s.count == 3 && s[0] == "a")
+  }
+
+  private func webURL(_ activity: NSUserActivity) -> URL? {
+    activity.activityType == NSUserActivityTypeBrowsingWeb ? activity.webpageURL : nil
+  }
+
+  // App-delegate lifecycle (also the cold start: iOS calls these after launch).
+
+  public func application(
+    _ application: UIApplication,
+    open url: URL,
+    options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+  ) -> Bool {
+    capture(url)
+  }
+
+  public func application(
+    _ application: UIApplication,
+    continue userActivity: NSUserActivity,
+    restorationHandler: @escaping ([Any]) -> Void
+  ) -> Bool {
+    guard let url = webURL(userActivity) else { return false }
+    return capture(url)
+  }
+
+  // UIScene lifecycle.
+
+  public func scene(
+    _ scene: UIScene,
+    willConnectTo session: UISceneSession,
+    options connectionOptions: UIScene.ConnectionOptions?
+  ) -> Bool {
+    // Observe only. Returning true here would claim the WHOLE connection and
+    // hide its options from Flutter and every other plugin.
+    connectionOptions?.urlContexts.forEach { capture($0.url) }
+    connectionOptions?.userActivities.compactMap(webURL).forEach { capture($0) }
+    return false
+  }
+
+  public func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) -> Bool {
+    URLContexts.map { capture($0.url) }.contains(true)
+  }
+
+  public func scene(_ scene: UIScene, continue userActivity: NSUserActivity) -> Bool {
+    guard let url = webURL(userActivity) else { return false }
+    return capture(url)
   }
 }

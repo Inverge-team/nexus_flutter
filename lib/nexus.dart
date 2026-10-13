@@ -12,7 +12,7 @@
 library;
 
 export 'src/nexus.dart' show Nexus;
-export 'src/config.dart' show NexusConfig;
+export 'src/config.dart' show NexusConfig, NexusDeepLinkHandler;
 export 'src/logging.dart' show NexusLog, NexusLogLevel, NexusLogSink;
 export 'src/context.dart' show NexusScope, NexusBuildContext;
 
@@ -21,7 +21,7 @@ export 'src/services/events_service.dart' show NexusEvents;
 export 'src/services/errors_service.dart' show NexusErrors;
 export 'src/services/logs_service.dart' show NexusLogs;
 export 'src/services/flags_service.dart' show NexusFlags;
-export 'src/services/links_service.dart' show NexusLinks;
+export 'src/services/links_service.dart' show NexusLinks, NexusDeepLink, NexusDeepLinkSource;
 export 'src/services/push_service.dart' show NexusPush, PushPlatform, PushProvider;
 export 'src/services/realtime_service.dart'
     show NexusRealtime, NexusEventHandler;

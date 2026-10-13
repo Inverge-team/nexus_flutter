@@ -67,6 +67,23 @@ abstract class NexusPlatform extends PlatformInterface {
   /// Receives the decoded [payload] map so the caller can attribute the open.
   void onNotificationTap(void Function(Map<String, dynamic> data) sink) {}
 
+  /// Deep links (Nexus links). Native code sees every URL that opens the app
+  /// before Flutter does; it queues them until Dart asks, so a cold-start link
+  /// is never lost to the engine starting first. Returns the queued URLs and
+  /// switches native to live delivery via [onLinkOpened].
+  Future<List<String>> linksTakePending() async => const [];
+
+  /// Register a sink for links opened while the app is running.
+  void onLinkOpened(void Function(String url) sink) {}
+
+  /// Tell native which hosts serve Nexus short links, so it can consume them
+  /// (keep them away from the app's router) on the NEXT cold start too.
+  Future<void> linksConfigure(List<String> hosts) async {}
+
+  /// Android only: the Google Play install referrer (e.g. `link_click_id=…`),
+  /// or null where unavailable (iOS, sideloaded, not yet installed via Play).
+  Future<String?> installReferrer() async => null;
+
   /// Post or update an Android live ongoing notification (the Android equivalent
   /// of an iOS Live Activity). Uses a promoted Live Update (ProgressStyle) on
   /// Android 16+, a normal ongoing notification with a progress bar otherwise.

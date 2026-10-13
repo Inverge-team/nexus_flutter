@@ -1,4 +1,11 @@
+import 'dart:async';
+
 import 'logging.dart';
+import 'services/links_service.dart' show NexusDeepLink;
+
+/// Decide what to do with a Nexus deep link. Return `true` when the app handled
+/// the navigation itself; `false` lets the SDK route to [NexusDeepLink.path].
+typedef NexusDeepLinkHandler = FutureOr<bool> Function(NexusDeepLink link);
 
 /// Configuration for [Nexus.init].
 class NexusConfig {
@@ -38,6 +45,10 @@ class NexusConfig {
     this.pushForegroundDisplay = true,
     this.pushAndroidChannelId = 'nexus_default',
     this.pushAndroidChannelName = 'Notifications',
+    this.linksEnabled = true,
+    this.linkDomains = const [],
+    this.autoRouteDeepLinks = true,
+    this.onDeepLink,
     this.appVersion,
     this.defaultProperties = const {},
   });
@@ -196,6 +207,28 @@ class NexusConfig {
   /// Human-readable name for [pushAndroidChannelId], shown in Android system
   /// settings. Default `Notifications`.
   final String pushAndroidChannelName;
+
+  /// Nexus Links, automatically: report the install on first launch (with the
+  /// Google Play install referrer on Android, for an exact match), report every
+  /// app open that came from a Nexus link, and route the user to the link's
+  /// deep-link value. No code needed. Default `true`.
+  final bool linksEnabled;
+
+  /// Extra hosts that serve your Nexus short links (a branded domain). The
+  /// [baseUrl] host is always included.
+  final List<String> linkDomains;
+
+  /// Navigate to a link's deep-link value when the app's router could not have
+  /// seen it itself: after an install (deferred deep link) and when the app was
+  /// opened by the short link directly (App Links / Universal Links). The SDK
+  /// delivers it as a platform deep link, so go_router, auto_route or a plain
+  /// Navigator route it exactly like one. Default `true`.
+  final bool autoRouteDeepLinks;
+
+  /// Called for every Nexus deep link before the SDK routes it — return `true`
+  /// to take over (e.g. hold it until after login; see
+  /// [NexusLinks.consumePending]).
+  final NexusDeepLinkHandler? onDeepLink;
 
   final bool remoteConfigEnabled;
 

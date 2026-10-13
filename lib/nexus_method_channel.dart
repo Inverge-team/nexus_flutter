@@ -16,6 +16,7 @@ class MethodChannelNexus extends NexusPlatform {
 
   void Function(String recordingId, List<Object?> events)? _replaySink;
   void Function(Map<String, dynamic> data)? _tapSink;
+  void Function(String url)? _linkSink;
 
   @override
   Future<String?> getPlatformVersion() =>
@@ -120,6 +121,35 @@ class MethodChannelNexus extends NexusPlatform {
   @override
   void onNotificationTap(void Function(Map<String, dynamic> data) sink) =>
       _tapSink = sink;
+
+  @override
+  Future<List<String>> linksTakePending() async {
+    try {
+      final res = await methodChannel.invokeMethod<List<dynamic>>('linksTakePending');
+      return (res ?? const []).whereType<String>().toList();
+    } catch (_) {
+      return const []; // no native link capture on this platform
+    }
+  }
+
+  @override
+  void onLinkOpened(void Function(String url) sink) => _linkSink = sink;
+
+  @override
+  Future<void> linksConfigure(List<String> hosts) async {
+    try {
+      await methodChannel.invokeMethod('linksConfigure', {'hosts': hosts});
+    } catch (_) {}
+  }
+
+  @override
+  Future<String?> installReferrer() async {
+    try {
+      return await methodChannel.invokeMethod<String>('installReferrer');
+    } catch (_) {
+      return null;
+    }
+  }
 
   @override
   Future<bool> showLiveActivity({
@@ -375,6 +405,9 @@ class MethodChannelNexus extends NexusPlatform {
       );
     } else if (call.method == 'onNotificationTap') {
       _tapSink?.call(_decode(call.arguments));
+    } else if (call.method == 'onLinkOpened') {
+      final url = call.arguments;
+      if (url is String) _linkSink?.call(url);
     } else if (call.method == 'onLiveActivityToken') {
       _laTokenSink?.call(_decode(call.arguments));
     } else if (call.method == 'onCallAnswer' || call.method == 'onCallReject' || call.method == 'onCallDisconnect') {

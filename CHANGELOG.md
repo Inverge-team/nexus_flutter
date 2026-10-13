@@ -1,3 +1,36 @@
+## 1.8.0
+
+### Added — Nexus Links, fully automatic
+Install the SDK and call `Nexus.init` — no link code needed (`linksEnabled`,
+default `true`).
+
+- **Installs** are reported once per install on first launch. Reinstalls are
+  detected from the OS install timestamp (even when Android Auto Backup restored
+  the app's preferences); apps that merely upgraded the SDK are not counted.
+- **Exact Android install attribution** via the Google Play Install Referrer:
+  the click-id rides in the store URL's `referrer`, so the install matches the
+  link click deterministically (adds `com.android.installreferrer:installreferrer`).
+- **Opens** from a Nexus link are reported automatically, once per click.
+- **Routing**: when the app's router could not have seen the link — after an
+  install (deferred deep link) or when the app was opened by the short link
+  itself — the SDK routes to the link's `deep_link_value` by delivering it as a
+  platform deep link, so go_router, auto_route or a plain Navigator handle it
+  unchanged. Short links (`/l/<slug>`, `/a/<appId>/<slug>`) are consumed
+  natively before Flutter routes them, so the app never sees a path it has no
+  route for.
+- **App Links (Android)** work with zero config: the SDK declares a verified
+  filter for `https://services.inverge.net/a/<applicationId>/…`. Register the app
+  in the console (Links → Apps).
+- **Universal Links (iOS)**: add `applinks:services.inverge.net` to the app's
+  Associated Domains once. Both the app-delegate and UIScene lifecycles are
+  supported.
+- New config: `linkDomains`, `autoRouteDeepLinks`, `onDeepLink` (return `true`
+  to take over routing). New API: `links.onLink` (stream), `links.consumePending()`,
+  `NexusDeepLink`; `links.attribute()` accepts `slug`.
+
+Uninstall tracking is server-side (silent push probes, opt-in per app in the
+console) and needs `pushEnabled`.
+
 ## 1.7.1
 
 ### Fixed — realtime

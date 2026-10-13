@@ -28,6 +28,9 @@ import io.flutter.plugin.common.PluginRegistry
 import net.inverge.nexus.core.NexusCrashReporter
 import net.inverge.nexus.core.NexusNdk
 import net.inverge.nexus.core.NexusReplayRecorder
+import net.inverge.nexus.links.NexusLinkActivity
+import com.android.installreferrer.api.InstallReferrerClient
+import com.android.installreferrer.api.InstallReferrerStateListener
 
 /**
  * Flutter <-> Android bridge. Device/app context is served here; session-replay
@@ -51,6 +54,10 @@ class NexusPlugin :
     private var ndk: NexusNdk? = null
     private var activityBinding: ActivityPluginBinding? = null
     private val io = Executors.newSingleThreadExecutor() // notification image downloads
+
+    // Deep links seen before Dart asked for them (cold start), then live.
+    private val pendingLinks = ArrayList<String>()
+    private var linksLive = false
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(binding.binaryMessenger, "nexus")
@@ -145,6 +152,18 @@ class NexusPlugin :
                 }
                 result.success(null)
             }
+            "linksTakePending" -> {
+                result.success(ArrayList(pendingLinks))
+                pendingLinks.clear()
+                linksLive = true
+            }
+            "linksConfigure" -> {
+                val hosts = call.argument<List<String>>("hosts") ?: emptyList()
+                appContext?.getSharedPreferences(LINK_PREFS, Context.MODE_PRIVATE)?.edit()
+                    ?.putStringSet(LINK_HOSTS, hosts.map { it.lowercase() }.toSet())?.apply()
+                result.success(null)
+            }
+            "installReferrer" -> installReferrer(result)
             "showNotification" -> showNotification(call, result)
             "showLiveActivity" -> showLiveActivity(call, result)
             "endLiveActivity" -> {
@@ -358,7 +377,84 @@ class NexusPlugin :
         }
     }
 
+    /**
+     * Capture a deep link from an activity intent for the Dart links service.
+     *
+     * Runs BEFORE Flutter reads the intent (plugins are attached in onAttach,
+     * ahead of the initial route; on onNewIntent plugins are told first), so a
+     * Nexus SHORT link can be consumed here — data cleared — and the app's router
+     * never receives `/l/<slug>`, a path it has no route for. Any other link is
+     * left for the router and only reported.
+     */
+    private fun captureLink(intent: Intent?) {
+        if (intent == null) return
+        intent.getStringExtra(NexusLinkActivity.EXTRA_LINK)?.let { url ->
+            intent.removeExtra(NexusLinkActivity.EXTRA_LINK)
+            deliverLink(url)
+            return
+        }
+        if (intent.action != Intent.ACTION_VIEW) return
+        val data = intent.data ?: return
+        // A config-change re-attach replays the same intent — report it once.
+        if (intent.getBooleanExtra(EXTRA_LINK_SEEN, false)) return
+        intent.putExtra(EXTRA_LINK_SEEN, true)
+        val url = data.toString()
+        if (isShortLink(data)) intent.data = null
+        deliverLink(url)
+    }
+
+    private fun deliverLink(url: String) {
+        if (linksLive) {
+            main.post { channel.invokeMethod("onLinkOpened", url) }
+        } else {
+            pendingLinks.add(url)
+        }
+    }
+
+    /** `/l/<slug>` or `/a/<appId>/<slug>` on a Nexus link host. */
+    private fun isShortLink(uri: android.net.Uri): Boolean {
+        val host = uri.host?.lowercase() ?: return false
+        val hosts = appContext?.getSharedPreferences(LINK_PREFS, Context.MODE_PRIVATE)
+            ?.getStringSet(LINK_HOSTS, null) ?: emptySet()
+        if (host != DEFAULT_LINK_HOST && host !in hosts) return false
+        val s = uri.pathSegments.filter { it.isNotEmpty() }
+        return (s.size == 2 && s[0] == "l") || (s.size == 3 && s[0] == "a")
+    }
+
+    /** Google Play's install referrer string, or null (not from Play / unavailable). */
+    private fun installReferrer(result: Result) {
+        val ctx = appContext ?: return result.success(null)
+        val client = try {
+            InstallReferrerClient.newBuilder(ctx).build()
+        } catch (_: Throwable) {
+            return result.success(null)
+        }
+        var answered = false
+        fun answer(value: String?) {
+            if (answered) return
+            answered = true
+            main.post { result.success(value) }
+            try { client.endConnection() } catch (_: Throwable) {}
+        }
+        try {
+            client.startConnection(object : InstallReferrerStateListener {
+                override fun onInstallReferrerSetupFinished(code: Int) {
+                    if (code == InstallReferrerClient.InstallReferrerResponse.OK) {
+                        answer(try { client.installReferrer.installReferrer } catch (_: Throwable) { null })
+                    } else {
+                        answer(null)
+                    }
+                }
+
+                override fun onInstallReferrerServiceDisconnected() = answer(null)
+            })
+        } catch (_: Throwable) {
+            answer(null)
+        }
+    }
+
     override fun onNewIntent(intent: Intent): Boolean {
+        captureLink(intent)
         maybeForwardAnswer(intent)
         val payload = intent.getStringExtra(EXTRA_PAYLOAD)
         val actionId = intent.getStringExtra(EXTRA_ACTION_ID)
@@ -382,6 +478,9 @@ class NexusPlugin :
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activityBinding = binding
         binding.addOnNewIntentListener(this)
+        // Launched from a deep link (cold start) — capture it before Flutter
+        // reads the intent for its initial route.
+        captureLink(binding.activity.intent)
         // The app may have been launched by answering a native call — forward it.
         maybeForwardAnswer(binding.activity.intent)
     }
@@ -445,5 +544,9 @@ class NexusPlugin :
         const val EXTRA_PAYLOAD = "net.inverge.nexus.NOTIFICATION_PAYLOAD"
         const val EXTRA_ACTION_ID = "net.inverge.nexus.NOTIFICATION_ACTION_ID"
         const val EXTRA_ACTION_URL = "net.inverge.nexus.NOTIFICATION_ACTION_URL"
+        const val EXTRA_LINK_SEEN = "net.inverge.nexus.LINK_SEEN"
+        const val LINK_PREFS = "nexus_links"
+        const val LINK_HOSTS = "hosts"
+        const val DEFAULT_LINK_HOST = "services.inverge.net"
     }
 }

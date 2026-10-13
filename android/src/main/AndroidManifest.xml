@@ -44,5 +44,28 @@
       android:turnScreenOn="true"
       android:taskAffinity="net.inverge.nexus.voice.call"
       android:theme="@android:style/Theme.Material.NoActionBar" />
+
+    <!-- Nexus App Links: opens https://services.inverge.net/a/<applicationId>/<slug>
+         straight in the app once the tenant registers it (console → Links → Apps,
+         which publishes /.well-known/assetlinks.json). The path is scoped to THIS
+         app's id because the link host is shared by every tenant. Invisible: it
+         only forwards the URL to the launcher activity. -->
+    <activity
+      android:name="net.inverge.nexus.links.NexusLinkActivity"
+      android:exported="true"
+      android:excludeFromRecents="true"
+      android:noHistory="true"
+      android:taskAffinity=""
+      android:theme="@android:style/Theme.Translucent.NoTitleBar">
+      <intent-filter android:autoVerify="true">
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data
+          android:scheme="https"
+          android:host="services.inverge.net"
+          android:pathPrefix="/a/${applicationId}/" />
+      </intent-filter>
+    </activity>
   </application>
 </manifest>
