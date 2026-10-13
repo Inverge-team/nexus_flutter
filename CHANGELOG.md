@@ -1,3 +1,19 @@
+## 1.7.1
+
+### Fixed — realtime
+- **Realtime now recovers after a dropped connection** (screen lock/unlock, network
+  loss, server restart). The socket reconnected, but rooms were re-joined with the
+  wrong field (`room` instead of `name`), so the server rejected every re-join with
+  `name_required` and no events arrived until the app was restarted.
+- **`realtime.emit()` now reaches the server.** It sent `{room, events}`; the gateway
+  expects `{name, event}` (as the JS SDK sends), so every emit was rejected.
+- **Reconnect on foreground when the app backgrounds mid-reconnect.** The lifecycle
+  hook only reconnected if the socket was connected at the moment of backgrounding;
+  it now reconnects whenever realtime was in use (new `realtime.isActive`).
+- **`realtime.off()` is permanent.** The handler is no longer re-registered on the
+  next (re)connect, and calling `on()` twice for one event no longer stacks two
+  listeners on the live socket.
+
 ## 1.7.0
 
 - **Caller avatar on incoming calls.** Pass `voice.placeCall(callerAvatarUrl: '…')`

@@ -215,10 +215,13 @@ class Nexus {
   Future<void> _onBackground() async {
     NexusLog.debug('app backgrounded — flushing telemetry');
     if (config.replayEnabled) replay.pause(); // can't rasterize a suspended app
-    _realtimeWasConnected = realtime.isConnected;
+    // `isActive`, not `isConnected`: a socket that is mid-reconnect when the app
+    // backgrounds (e.g. the link dropped just before the screen locked) must
+    // still come back on foreground.
+    _realtimeWasConnected = realtime.isActive;
     // Graceful disconnect → the server meters the exact connected duration
     // instead of over-counting until a ping timeout while the app is suspended.
-    if (config.manageRealtimeWithLifecycle && realtime.isConnected) {
+    if (config.manageRealtimeWithLifecycle && realtime.isActive) {
       realtime.disconnect();
     }
     if (config.flushOnBackground) await flush();
