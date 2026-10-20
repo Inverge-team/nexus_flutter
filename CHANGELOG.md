@@ -1,3 +1,43 @@
+## 1.9.0
+
+In-app messages, rebuilt around the console's new designer. Backward compatible:
+messages made before the designer render exactly as before, and apps on older
+SDKs keep receiving a plain fallback of designed messages.
+
+### Added — designed in-app messages
+Messages built in the console's new in-app designer render natively.
+
+- `NexusInAppMessage.design` (`NexusInAppDesign`) — the block document from
+  `content.design`: image, badge, heading, text, buttons (row or stacked),
+  spacer, divider; solid / gradient / image frame backgrounds, radius, padding,
+  gap, max width, shadow, border; backdrop colour + tap-to-dismiss; close button
+  style / side / colour; `fade` / `slide` / `zoom` entrance; auto-dismiss;
+  `auto` / `ltr` / `rtl` direction (`auto` follows the copy's script).
+- `NexusInAppDesignedView` draws it; `NexusInAppOverlay` uses it automatically
+  for designed messages (unless you pass a `messageBuilder`). Same layout rules
+  as the console preview.
+- New layout `bottom_sheet`.
+- Carousel block (`NexusInAppCarouselBlock` / `NexusInAppCarouselCard`): up to 10
+  swipeable cards that snap to card boundaries, with peek, page dots and autoplay
+  (restarts after a swipe). Card buttons and card taps are reported with their own ids.
+- New button action `copy` — puts `value` on the clipboard.
+  `NexusInAppButton.value` / `NexusInAppAction.value` carry it.
+- Tappable images report a click with the image block's id.
+
+Messages without a design (made before the designer) render exactly as before.
+
+### Added — targeting, personalisation, A/B tests, test sends
+- `inApp.setProperties()` / `clearProperties()` — extra properties for audience
+  conditions and `{{variables}}`, on top of the identify traits.
+- Fetches now send the user's traits, name / email / phone, and device context
+  (platform, OS version, app version, language). `identify()` keeps name /
+  email / phone in memory and restores them on the next launch; `reset()` clears them.
+- `NexusInAppMessage.variantId` / `NexusInAppAction.variantId`; impressions,
+  clicks and dismissals report the variant and the install's device key.
+- Console test sends (`NexusInAppMessage.isTest`) show immediately, skip triggers
+  and caps, and are never reported. Registered test devices listen on a realtime
+  room (`inapp-test:<deviceKey>`) for instant delivery; other installs never join it.
+
 ## 1.8.0
 
 ### Added — Nexus Links, fully automatic

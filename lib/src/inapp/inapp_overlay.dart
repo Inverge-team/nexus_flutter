@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../nexus.dart';
+import 'inapp_designed_view.dart';
 import 'inapp_models.dart';
 import 'inapp_view.dart';
 
@@ -61,7 +62,18 @@ class _NexusInAppOverlayState extends State<NexusInAppOverlay> {
     return Stack(
       children: [
         widget.child,
-        if (message != null && inApp != null)
+        // Designed in the console: the designed view owns backdrop, placement and motion.
+        if (message != null && inApp != null && message.design != null && widget.messageBuilder == null)
+          Positioned.fill(
+            child: NexusInAppDesignedView(
+              key: ValueKey(message.id),
+              message: message,
+              design: message.design!,
+              onButton: (b) => inApp.tapButton(message, b),
+              onDismiss: () => inApp.dismiss(message),
+            ),
+          )
+        else if (message != null && inApp != null)
           Positioned.fill(
             child: Stack(
               children: [
@@ -99,6 +111,7 @@ class _NexusInAppOverlayState extends State<NexusInAppOverlay> {
       case 'banner_top':
         return Alignment.topCenter;
       case 'banner_bottom':
+      case 'bottom_sheet':
         return Alignment.bottomCenter;
       case 'fullscreen':
         return Alignment.center;

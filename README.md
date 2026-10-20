@@ -652,10 +652,14 @@ await Nexus.instance.push.unregister();        // on logout
 
 ## 17. In-app messages
 
-OneSignal-style in-app messages — modals and banners shown **inside** your app,
-triggered on session start or a custom analytics event. Compose them in the
-console (**In-app messages**); the SDK fetches, targets, caps frequency, renders,
-and reports impressions/clicks.
+OneSignal-style in-app messages — modals, bottom sheets, banners and full-screen
+takeovers shown **inside** your app, triggered on session start or a custom
+analytics event. **Design them in the console's designer** (In-app messages →
+New message): images, badges, headings, text, buttons, spacers and dividers;
+solid / gradient / image backgrounds; backdrop, close button, entrance animation,
+auto-dismiss and right-to-left layout — with a live phone preview. The SDK draws
+the design natively (`NexusInAppDesignedView`), fetches, caps frequency, and
+reports impressions/clicks.
 
 **1. Just enable it.**
 
@@ -671,21 +675,56 @@ automatically; event-triggered ones fire when you `track` the event:
 context.nexus.events.track('checkout_started'); // shows a message triggered by it
 ```
 
-**2. Handle button taps** (open URL / custom event / dismiss). Impressions and
-clicks are already tracked; `onAction` lets you act on them:
+**2. Handle button taps** (open URL / custom event / copy / dismiss). Impressions
+and clicks are already tracked, `event` actions are tracked through Events, and
+`copy` buttons put their value on the clipboard. The SDK never opens links itself
+— `onAction` is where you route them (web pages or your own deep links):
 
 ```dart
 Nexus.instance.inApp.onAction = (a) {
-  // a.messageId, a.buttonId, a.action ('dismiss'|'url'|'event'), a.url, a.event
+  // a.messageId, a.buttonId, a.action ('dismiss'|'url'|'event'|'copy'), a.url, a.event, a.value
   if (a.action == 'url' && a.url != null) launchUrl(Uri.parse(a.url!));
 };
 ```
 
-Layouts: `modal`, `center`, `banner_top`, `banner_bottom`, `fullscreen`. Frequency
+Tappable images report a click with the image block's id as `buttonId`.
+
+**Carousels** — a swipeable row of up to 10 cards, each with its own image,
+title, text, colours, an optional button and an optional tap action. Cards snap
+into place, show the edge of the next one (optional), keep equal heights with
+buttons lined up, and can autoplay. A card's button reports its own id; tapping
+the card itself reports the card's id. SDKs older than carousels show the first
+card as a plain message.
+
+**3. Targeting, personalisation, A/B tests — decided on the server.** Each fetch
+sends who this is: the `identify()` user (name, email, phone, traits), the
+platform / OS / app version / language, and anything you add:
+
+```dart
+// Match "plan is pro" in the console's Audience step, and fill {{coupon}} in the copy.
+await Nexus.instance.inApp.setProperties({'plan': 'pro', 'coupon': 'SARA20'});
+```
+
+The server only returns messages whose audience includes this user, picks one
+A/B variant per install (it sticks — logging in does not switch it), and fills
+`{{first_name}}`-style variables (`{{first_name | there}}` falls back). Events
+carry the variant (`NexusInAppMessage.variantId`, `NexusInAppAction.variantId`)
+so the console can compare variants and goal conversions.
+
+**Send test** from the designer shows the message on a chosen device the next
+time the app fetches — opening it, or returning to the foreground. Devices you
+have sent a test to become *test devices*: while the app is open and realtime is
+connected, their tests appear instantly.
+
+Layouts: `modal`, `bottom_sheet`, `banner_top`, `banner_bottom`, `fullscreen`
+(`center` is kept for older messages and draws like `modal`). Messages made
+before the designer have no `design` and render with the classic view. Frequency
 is capped per device (`maxDisplays`) and optionally once per session. Present
 manually via `nexus.inApp.show(message)` (set `inAppAutoShow: false`). For a custom
 look, set `autoShowOverlay: false` and mount `NexusInAppOverlay(messageBuilder: ...)`
-yourself in `MaterialApp.builder`.
+yourself in `MaterialApp.builder` — the builder receives the parsed
+`message.design` (blocks, frame, colours) if you want to draw the designed
+content your own way.
 
 ---
 

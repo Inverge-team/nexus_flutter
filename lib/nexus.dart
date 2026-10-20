@@ -59,7 +59,25 @@ export 'src/voice/voice_overlay.dart' show NexusVoiceOverlay;
 export 'src/voice/ivr.dart' show NexusIvrOverlay, NexusIvrSession, NexusIvrStatus;
 export 'src/inapp/inapp_models.dart'
     show NexusInAppMessage, NexusInAppButton, NexusInAppAction;
+export 'src/inapp/inapp_design.dart'
+    show
+        NexusInAppDesign,
+        NexusInAppFrame,
+        NexusInAppClose,
+        NexusInAppTap,
+        NexusInAppBlock,
+        NexusInAppImageBlock,
+        NexusInAppBadgeBlock,
+        NexusInAppHeadingBlock,
+        NexusInAppTextBlock,
+        NexusInAppButtonsBlock,
+        NexusInAppSpacerBlock,
+        NexusInAppDividerBlock,
+        NexusInAppCarouselBlock,
+        NexusInAppCarouselCard,
+        NexusInAppDesignButton;
 export 'src/inapp/inapp_view.dart' show NexusInAppView;
+export 'src/inapp/inapp_designed_view.dart' show NexusInAppDesignedView;
 export 'src/inapp/inapp_overlay.dart' show NexusInAppOverlay, NexusInAppBuilder;
 
 // Advanced: native platform surface (device info + replay capture).

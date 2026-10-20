@@ -146,6 +146,7 @@ class Nexus {
       inApp.onEvent(name);
     };
     inApp.onTrackEvent = (event) => events.track(event);
+    inApp.attachRealtime(realtime);
 
     // Auto-mount the survey + in-app overlays (no MaterialApp.builder needed).
     if (config.autoShowOverlay && (config.surveysEnabled || config.inAppEnabled || config.voiceEnabled)) {
@@ -277,6 +278,9 @@ class Nexus {
     if (stored == null) return;
     _identity.distinctId = stored.distinctId;
     _identity.traits.addAll(stored.traits);
+    _identity.email = stored.email;
+    _identity.name = stored.name;
+    _identity.phone = stored.phone;
     NexusLog.info('restored identity — distinctId=${stored.distinctId}');
   }
 
