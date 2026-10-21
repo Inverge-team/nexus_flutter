@@ -730,57 +730,162 @@ content your own way.
 
 ## 18. Live Activities
 
-A live, updating view of an in-progress event — on the iOS Lock Screen / Dynamic
-Island (ActivityKit) and as an Android live ongoing notification — driven by one
-cross-platform API. Enable it:
+A live, updating view of an in-progress event (a delivery, a ride, an order) —
+on the iOS **Lock Screen / Dynamic Island** (ActivityKit) and as an Android 16
+**Live Update** (a promoted ongoing notification; older Android: an ongoing
+notification with a progress bar). Enable it:
 
 ```dart
 await Nexus.init(const NexusConfig(apiKey: 'nxs_live_xxx', liveActivityEnabled: true));
 ```
 
-**Drive it server-side** (recommended) from the console (**Live Activities**) or
-the Live Activity API — start / update / end by `activityId`. iOS receives
-ActivityKit push updates; Android receives a data message the SDK turns into a
-live notification. Nothing to call in the app for updates.
+### Templates — design once, send data
 
-**Or drive it locally:**
+Design templates in the console (**Live Activities → Templates**) with live
+iOS / Dynamic Island / Android previews, translations and image uploads, then
+start one by its key — your server sends only data:
+
+```http
+POST /partner/live-activities/start        (x-api-key)
+{ "activityId": "order_42", "distinctIds": ["user_7"], "template": "order_tracking",
+  "data": { "step": "pending", "etaAt": 1792500000, "values": { "driver": "Ahmed" } } }
+```
+
+- **Each device gets its own language** — the app language the SDK reported for
+  that device picks the template's translation (exact, then base language, e.g.
+  `pt_BR` → `pt`, then the template's default). Pass `"lang": "ar"` to force one.
+- Saving a template validates it **and checks every language against the 4 KB
+  push limit**, so a saved template is always deliverable.
+- Archived templates can't be started; running activities keep their design.
+
+You can also send the design inline instead of a key:
+
+A **template** is the design: layout (`steps`, `progress` or `text`), colours,
+icons, the moving tracker image, step labels, and texts with `{{placeholders}}`.
+The SDK renders the **same template on iOS and Android**, so new designs need no
+app update. Your server then only sends **data**:
+
+```http
+POST /partner/live-activities/start        (x-api-key)
+{ "activityId": "order_42", "distinctIds": ["user_7"],
+  "template": { "layout": "steps", "dir": "ltr",
+    "theme": { "brand": "#402D67", "accent": "#13B39B" },
+    "tracker": { "asset": "DeliveryTruck" }, "trackerAspect": 2.6,
+    "subtitle": "{{quantity}} · {{driver}}", "etaLabel": "ETA",
+    "steps": [
+      { "id": "pending",    "label": "Pending",    "icon": { "sf": "clock.fill" },         "title": "Order received", "eta": true },
+      { "id": "on_the_way", "label": "On the way", "icon": { "sf": "box.truck.fill" },     "title": "{{driver}} is on the way", "eta": true },
+      { "id": "arrived",    "label": "Arrived",    "icon": { "sf": "mappin.and.ellipse" }, "title": "Driver has arrived" },
+      { "id": "completed",  "label": "Delivered",  "icon": { "sf": "checkmark" },          "title": "Delivered" } ],
+    "canceled": { "title": "Order canceled" } },
+  "data": { "step": "pending", "etaAt": 1792500000,
+            "values": { "driver": "Ahmed", "quantity": "500 L · Diesel" } } }
+
+POST /partner/live-activities/order_42/update   { "data": { "step": "on_the_way", "progress": 0.4 } }
+POST /partner/live-activities/order_42/end      { "data": { "step": "completed" } }
+```
+
+- **Updates are partial** — send only what changed; the server merges it into the
+  activity's current data (`null` clears a field). The template is sent once.
+- `data.step` matches a step's `id` or `label`, ignoring case, spaces and `_`
+  (so your own status labels like `"On the Way"` work as-is).
+- `data.progress` (0–1) moves the tracker between the current and the next step.
+- `data.etaAt` (unix seconds) shows a **live countdown** that ticks on the device
+  with no further pushes. `values.eta` shows a fixed text instead.
+- `data.state`: `canceled` (red, steps greyed) or `done`.
+- The push-to-start alert defaults to the current step's title + the subtitle.
+- Payloads are checked against the 4 KB APNs / FCM limit **before** sending — an
+  oversized template is a clear API error, not a silent drop on the device.
+- Without a template, the plain `activityType` + `contentState` API still works.
+
+**Template reference** (every field optional): `layout`, `dir` (`ltr`/`rtl` —
+RTL mirrors the steps), `theme` `{ bg, bgDark, text, textDark, brand, accent,
+danger }` (hex), `icon`, `tracker` + `trackerRtl` (an RTL variant, so artwork
+with lettering can face the travel direction), `trackerAspect` (width ÷ height),
+`title`, `subtitle`, `body`, `steps[] { id, label, icon, title, subtitle, body,
+eta }`, `canceled { title, label, body, icon }`, `startIcon` / `endIcon`
+(progress layout), `etaLabel`, `showEta`, `url` (deep link on tap).
+
+**Images** (`icon`, `tracker`, step icons) are `{ sf, asset, url, res }`, tried
+in order: a cached `url` → an `asset` bundled in the Widget Extension → an SF
+Symbol (`sf`, iOS) / an app drawable (`res`, Android). Images uploaded in the
+designer become `url`s (served by Nexus; set `PUBLIC_API_URL` on self-hosted
+servers). Widgets can't download, so on iOS the SDK pre-caches every template
+image into the optional App Group at launch (below); Android downloads them.
+A ref can carry several sources — e.g. `{ "url": …, "asset": "Truck" }` uses the
+uploaded image where it's cached / on Android and the bundled one otherwise.
+
+**Or drive it locally** (same template + data):
 
 ```dart
-await Nexus.instance.liveActivity.start('order_42', 'DeliveryAttributes',
-    {'title': 'Order #42', 'status': 'Preparing', 'progress': 20});
-await Nexus.instance.liveActivity.update('order_42', {'status': 'On the way', 'progress': 60});
+await Nexus.instance.liveActivity.start('order_42', NexusLiveActivity.iosActivityType,
+    {'step': 'pending', 'values': {'driver': 'Ahmed'}}, template: myTemplate);
+await Nexus.instance.liveActivity.update('order_42', {'step': 'on_the_way', 'progress': 0.4});
 await Nexus.instance.liveActivity.end('order_42');
 ```
 
-The content-state maps to `title` / `subtitle` / `body` / `status` /
-`progress` (0–100) on both platforms.
+### iOS — one-time setup
 
-### iOS setup (Widget Extension)
+Apple requires the Live Activity UI to live in a **Widget Extension** inside your
+app. The SDK ships the whole renderer as the Flutter-free `NexusLiveActivityKit`
+pod, so the extension is three lines and never changes again:
 
-iOS renders the activity from a **Widget Extension** compiled into your app (an
-inherent iOS requirement — the same as OneSignal). One-time setup:
+1. Xcode → **File → New → Target → Widget Extension** (e.g. `LiveActivityWidget`),
+   deployment target **iOS 16.1+**. Delete the generated Swift files and add
+   [`ios/NexusLiveActivityWidget/NexusLiveActivityWidget.swift`](ios/NexusLiveActivityWidget/NexusLiveActivityWidget.swift):
+   ```swift
+   import NexusLiveActivityKit
+   import SwiftUI
+   import WidgetKit
+   @main struct AppWidgets: WidgetBundle { var body: some Widget { NexusLiveActivityWidget() } }
+   ```
+2. `ios/Podfile` — add the extension target, then `flutter run` (runs `pod install`):
+   ```ruby
+   target 'LiveActivityWidget' do
+     use_frameworks!
+     pod 'NexusLiveActivityKit', :path => '.symlinks/plugins/nexus_flutter/ios'
+   end
+   ```
+   If `pod install` warns *"CocoaPods did not set the base configuration … of the
+   target `LiveActivityWidget`"* (Xcode set the extension's configurations to
+   `Flutter/Generated.xcconfig`), give the extension one xcconfig per
+   configuration that includes both — e.g. `Flutter/LiveActivityWidget-Debug.xcconfig`:
+   ```
+   #include "Generated.xcconfig"
+   #include? "../Pods/Target Support Files/Pods-LiveActivityWidget/Pods-LiveActivityWidget.debug.xcconfig"
+   ```
+   and set it as the extension's base configuration (Project → Info →
+   Configurations), likewise for Release / Profile. Keeping `Generated.xcconfig`
+   matters: the extension's version must match the app's (`FLUTTER_BUILD_NAME`).
+3. App `Info.plist`: `NSSupportsLiveActivities = YES` (and
+   `NSSupportsLiveActivitiesFrequentUpdates = YES` for frequent updates).
+4. Upload your APNs key in the console (**Push → Settings → Apple**; use
+   **Test** — Sandbox for Xcode builds, Production for TestFlight / App Store).
 
-1. Xcode → **File → New → Target → Widget Extension** (check *Include Live
-   Activity*), deployment target iOS 16.1+.
-2. Use the SDK's ready-made widget — copy
-   [`ios/NexusLiveActivityWidget/NexusLiveActivityWidget.swift`](ios/NexusLiveActivityWidget/NexusLiveActivityWidget.swift)
-   into the target. It renders `NexusLiveActivityAttributes`, so add the Nexus
-   SDK to the widget target (or share the attributes source with both targets).
-   Customize the SwiftUI freely.
-3. Add `NSSupportsLiveActivities = YES` to your app's `Info.plist` (and
-   `NSSupportsLiveActivitiesFrequentUpdates = YES` if you send frequent updates).
+Optional — **remote images**: enable the same App Group on the app and the
+extension, and set `NexusAppGroup` (e.g. `group.com.company.app`) in **both**
+`Info.plist`s. The SDK then caches template `url` images for the widget.
 
-The SDK manages the ActivityKit lifecycle and registers push-to-start (17.2+) +
-update tokens for you. For custom fields, define your own `ActivityAttributes`,
-manage ActivityKit yourself, and register tokens with
-`nexus.liveActivity.registerPushToStartToken(...)` /
-`registerActivity(...)`.
+Images you reference by `asset` go in the extension's `Assets.xcassets`.
+
+The SDK observes everything automatically (push-to-start tokens on 17.2+,
+push-started activities' update tokens). With logging on it prints a diagnostic
+at launch — `liveActivity: enabled=true, frequentPushes=true, running=0` — and
+**warns when the user has turned Live Activities off** (iOS then silently drops
+every Live Activity push; it's in iOS Settings → your app → Live Activities).
+
+For a fully custom SwiftUI widget, define your own `ActivityAttributes`, manage
+ActivityKit yourself, and register tokens with
+`nexus.liveActivity.registerPushToStartToken(...)` / `registerActivity(...)`.
 
 ### Android
 
-No widget — the SDK posts a live **ongoing notification** (progress / status)
-that updates in place and clears on end. Works in the foreground, background, and
-killed states (via the same data-message path as push).
+No setup. The SDK renders the template from an FCM data message — foreground,
+background and killed — as a **Live Update** on Android 16+: `ProgressStyle`
+with a segment per step, a point per step, the tracker icon riding the bar, a
+status chip (ETA or step) and an ETA countdown. The SDK declares
+`POST_PROMOTED_NOTIFICATIONS`; users can still demote it in system settings.
+Older Android shows the same texts with a progress bar.
 
 ---
 

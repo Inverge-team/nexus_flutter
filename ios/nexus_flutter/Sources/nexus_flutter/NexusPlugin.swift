@@ -67,7 +67,7 @@ public class NexusPlugin: NSObject, FlutterPlugin {
       result(nil)
     case "takePendingCrashes":
       result(NexusCrashReporter.shared.takePending())
-    case "liveActivityStart", "liveActivityUpdate", "liveActivityEnd", "liveActivityObservePushToStart":
+    case "liveActivityStart", "liveActivityUpdate", "liveActivityEnd", "liveActivityObservePushToStart", "liveActivityCacheImages":
       handleLiveActivity(call, result)
     case "voiceRegisterAccount", "voiceReportIncoming", "voiceEndCall", "voiceMissedCall",
          "voiceReportOutgoing", "voiceReportConnected", "voiceVoipToken":
@@ -146,9 +146,7 @@ public class NexusPlugin: NSObject, FlutterPlugin {
     #if os(iOS)
       if #available(iOS 16.1, *) {
         let mgr = NexusLiveActivityManager.shared
-        mgr.onToken = { [weak channel] info in
-          DispatchQueue.main.async { channel?.invokeMethod("onLiveActivityToken", arguments: info) }
-        }
+        mgr.onToken = { [weak channel] info in channel?.invokeMethod("onLiveActivityToken", arguments: info) }
         let args = call.arguments as? [String: Any] ?? [:]
         switch call.method {
         case "liveActivityStart":
@@ -156,14 +154,16 @@ public class NexusPlugin: NSObject, FlutterPlugin {
             activityId: args["activityId"] as? String ?? "",
             activityType: args["activityType"] as? String ?? "",
             contentState: args["contentState"] as? [String: Any],
-            attributes: args["attributes"] as? [String: Any]
+            template: (args["template"] ?? args["attributes"]) as? [String: Any]
           )
         case "liveActivityUpdate":
           mgr.update(activityId: args["activityId"] as? String ?? "", contentState: args["contentState"] as? [String: Any])
         case "liveActivityEnd":
           mgr.end(activityId: args["activityId"] as? String ?? "", contentState: args["contentState"] as? [String: Any])
         case "liveActivityObservePushToStart":
-          mgr.observePushToStart(activityType: args["activityType"] as? String ?? "")
+          mgr.observe()
+        case "liveActivityCacheImages":
+          mgr.cacheImages(args["urls"] as? [String] ?? [])
         default: break
         }
         result(nil)

@@ -190,6 +190,23 @@ class MethodChannelNexus extends NexusPlatform {
     } catch (_) {}
   }
 
+  @override
+  Future<bool> showLiveActivityTemplate({required int id, required Map<String, dynamic> payload}) async {
+    try {
+      final ok = await methodChannel.invokeMethod<bool>('showLiveActivityTemplate', {'id': id, 'payload': jsonEncode(payload)});
+      return ok ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<void> liveActivityCacheImages(List<String> urls) async {
+    try {
+      await methodChannel.invokeMethod('liveActivityCacheImages', {'urls': urls});
+    } catch (_) {}
+  }
+
   void Function(Map<String, dynamic> info)? _laTokenSink;
 
   @override
@@ -198,6 +215,7 @@ class MethodChannelNexus extends NexusPlatform {
     required String activityType,
     required Map<String, dynamic> contentState,
     Map<String, dynamic>? attributes,
+    Map<String, dynamic>? template,
   }) async {
     try {
       await methodChannel.invokeMethod('liveActivityStart', {
@@ -205,6 +223,7 @@ class MethodChannelNexus extends NexusPlatform {
         'activityType': activityType,
         'contentState': contentState,
         'attributes': attributes,
+        'template': template,
       });
     } catch (_) {}
   }

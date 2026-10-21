@@ -10,6 +10,8 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <!-- Android 16 Live Updates (promoted ongoing notifications) for Live Activities. -->
+  <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
 
   <application>
     <!-- Telecom binds this to draw the incoming/ongoing call UI itself. -->

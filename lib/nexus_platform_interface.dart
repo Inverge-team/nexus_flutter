@@ -104,6 +104,15 @@ abstract class NexusPlatform extends PlatformInterface {
   /// Remove an Android live ongoing notification (end of a live activity).
   Future<void> endLiveActivity(int id) async {}
 
+  /// Render a Nexus Live Activity template on Android: a promoted Live Update
+  /// (`ProgressStyle` — segments/points/tracker icon, status chip, ETA countdown)
+  /// on Android 16+, an ongoing notification with a progress bar otherwise.
+  /// [payload] is `{ event, activityId, template, data }`. Returns `true` if shown.
+  Future<bool> showLiveActivityTemplate({required int id, required Map<String, dynamic> payload}) async => false;
+
+  /// iOS: download template images into the App Group so the widget can show them.
+  Future<void> liveActivityCacheImages(List<String> urls) async {}
+
   // ---- iOS ActivityKit bridge (no-ops on other platforms) ----
 
   /// Start an iOS Live Activity (ActivityKit) with the turn-key default
@@ -113,6 +122,7 @@ abstract class NexusPlatform extends PlatformInterface {
     required String activityType,
     required Map<String, dynamic> contentState,
     Map<String, dynamic>? attributes,
+    Map<String, dynamic>? template,
   }) async {}
 
   /// Update a running iOS Live Activity's content state.
@@ -124,12 +134,13 @@ abstract class NexusPlatform extends PlatformInterface {
   /// End a running iOS Live Activity.
   Future<void> liveActivityEnd({required String activityId, Map<String, dynamic>? finalContentState}) async {}
 
-  /// Observe push-to-start tokens (iOS 17.2+) for an activity type; tokens are
-  /// delivered via [onLiveActivityToken].
+  /// Start observing ActivityKit: push-to-start tokens (iOS 17.2+), push-started
+  /// activities' update tokens, and diagnostics — all via [onLiveActivityToken].
   Future<void> liveActivityObservePushToStart(String activityType) async {}
 
   /// Register a sink for ActivityKit tokens. `info` carries
-  /// `{ kind: 'pushToStart'|'update', activityType?, activityId?, token }`.
+  /// `{ kind: 'pushToStart'|'update', activityType?, activityId?, token }` or a
+  /// diagnostic `{ kind: 'status', event, … }`.
   void onLiveActivityToken(void Function(Map<String, dynamic> info) sink) {}
 
   // ---- Native voice (self-managed Telecom / CallKit) ----

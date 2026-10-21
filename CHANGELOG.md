@@ -1,3 +1,29 @@
+## 1.10.0
+
+Live Activities, designed in the console. Backward compatible: the plain
+contentState API and custom `ActivityAttributes` widgets work as before.
+
+### Added — Live Activity templates
+- **`NexusLiveActivityKit`** — a Flutter-free pod with the whole iOS renderer.
+  The one-time Widget Extension is three lines (`NexusLiveActivityWidget()`);
+  every design then comes from the Nexus console / API with no app update.
+  Layouts: steps (with a tracker image riding the steps), progress bar, text;
+  theme colours, SF Symbol / bundled / cached-URL images, `{{placeholders}}`,
+  live ETA countdown, RTL, Lock Screen + Dynamic Island.
+- **Android 16 Live Updates** from the same template — `ProgressStyle` with a
+  segment + point per step, the tracker icon, a status chip and an ETA
+  chronometer (older Android: ongoing notification + progress bar). Declares
+  `POST_PROMOTED_NOTIFICATIONS`.
+- `NexusLiveActivityAttributes` is one source file shared by the app and the
+  widget pods; decoding is lenient (a bad field degrades that field, never the
+  whole activity — iOS would silently drop it).
+- The SDK observes ActivityKit automatically: push-to-start tokens, the update
+  tokens of push-started activities (incl. after an app restart), and logs a
+  diagnostic — warning when the user turned Live Activities off.
+- Template images are pre-cached into the optional App Group (`NexusAppGroup`)
+  at launch so push-started activities can show them.
+- Local API: `liveActivity.start(..., template:)`, `cacheImages(urls)`.
+
 ## 1.9.0
 
 In-app messages, rebuilt around the console's new designer. Backward compatible:

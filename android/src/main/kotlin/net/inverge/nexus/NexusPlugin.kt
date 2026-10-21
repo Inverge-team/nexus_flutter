@@ -29,6 +29,7 @@ import net.inverge.nexus.core.NexusCrashReporter
 import net.inverge.nexus.core.NexusNdk
 import net.inverge.nexus.core.NexusReplayRecorder
 import net.inverge.nexus.links.NexusLinkActivity
+import net.inverge.nexus.liveactivity.NexusLiveUpdate
 import com.android.installreferrer.api.InstallReferrerClient
 import com.android.installreferrer.api.InstallReferrerStateListener
 
@@ -166,6 +167,7 @@ class NexusPlugin :
             "installReferrer" -> installReferrer(result)
             "showNotification" -> showNotification(call, result)
             "showLiveActivity" -> showLiveActivity(call, result)
+            "showLiveActivityTemplate" -> showLiveActivityTemplate(call, result)
             "endLiveActivity" -> {
                 val id = call.argument<Int>("id")
                 if (id != null) {
@@ -316,6 +318,21 @@ class NexusPlugin :
             result.success(true)
         } catch (_: Throwable) {
             result.success(false)
+        }
+    }
+
+    /** Render a Nexus Live Activity template (Android 16 Live Update / progress fallback). */
+    private fun showLiveActivityTemplate(call: MethodCall, result: Result) {
+        val ctx = appContext ?: return result.success(false)
+        val id = call.argument<Int>("id") ?: return result.success(false)
+        val payload = call.argument<String>("payload") ?: return result.success(false)
+        io.execute {
+            val ok = try {
+                NexusLiveUpdate.show(ctx, id, payload, resolveSmallIcon(ctx, null), activityIntent(ctx, id, payload, null, null)) { bitmapFromUrl(it) }
+            } catch (_: Throwable) {
+                false
+            }
+            main.post { result.success(ok) }
         }
     }
 

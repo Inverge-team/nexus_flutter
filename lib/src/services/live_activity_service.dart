@@ -10,35 +10,51 @@ import '../identity.dart';
 import '../logging.dart';
 
 /// Live Activities — a live, updating view of an in-progress event on the iOS
-/// Lock Screen / Dynamic Island and as an Android live ongoing notification.
+/// Lock Screen / Dynamic Island and as an Android 16 Live Update (a promoted
+/// ongoing notification; older Android: ongoing + progress bar).
 ///
 /// Two ways to use it:
-/// - **Server-driven** (recommended): start/update/end from the dashboard or the
-///   Live Activity API. iOS receives ActivityKit push updates; Android receives a
-///   data message the SDK turns into a live notification — nothing to call here.
+/// - **Server-driven** (recommended): design a template in the Nexus dashboard
+///   (or send one via the API) and start/update/end it from your server. The SDK
+///   renders it on both platforms — nothing to call here.
 /// - **Local**: drive it from the app with [start] / [update] / [end].
 ///
-/// For iOS you also ship a Widget Extension (the ActivityKit layout). With the
-/// turn-key default attributes the SDK manages the ActivityKit lifecycle and
-/// registers push-to-start + update tokens for you; for a typed setup, manage
-/// ActivityKit yourself and call [registerPushToStartToken] / [registerActivity].
+/// iOS needs a one-time Widget Extension that hosts `NexusLiveActivityWidget`
+/// (the `NexusLiveActivityKit` pod) — see the README. The SDK then manages the
+/// ActivityKit lifecycle and registers push-to-start + update tokens for you.
+/// For a custom `ActivityAttributes` type, manage ActivityKit yourself and call
+/// [registerPushToStartToken] / [registerActivity].
 class NexusLiveActivity {
   NexusLiveActivity(this._http, this._id);
 
   final NexusHttp _http;
   final NexusIdentity _id;
 
-  bool _wired = false;
+  /// The ActivityKit attributes type the SDK widget renders — the type
+  /// server-driven starts target on iOS.
+  static const iosActivityType = 'NexusLiveActivityAttributes';
 
-  /// Wire native ActivityKit token callbacks → backend registration. Called at
-  /// init when `liveActivityEnabled`.
+  bool _wired = false;
+  bool _prefetched = false;
+  // Android local flow: the template of each locally started activity, so
+  // [update] can re-render it.
+  final Map<String, Map<String, dynamic>> _localTemplates = {};
+
+  /// Wire native ActivityKit callbacks → backend registration and start
+  /// observing (push-to-start tokens, push-started activities, diagnostics).
+  /// Called at init when `liveActivityEnabled`.
   void wire() {
     if (_wired) return;
     _wired = true;
     NexusPlatform.instance.onLiveActivityToken(_onToken);
+    if (_platform() == 'ios') unawaited(NexusPlatform.instance.liveActivityObservePushToStart(iosActivityType));
   }
 
   void _onToken(Map<String, dynamic> info) {
+    if (info['kind'] == 'status') {
+      _logStatus(info);
+      return;
+    }
     final token = info['token']?.toString();
     if (token == null) return;
     if (info['kind'] == 'pushToStart') {
@@ -51,6 +67,38 @@ class NexusLiveActivity {
         updateToken: token,
       ));
     }
+  }
+
+  void _logStatus(Map<String, dynamic> info) {
+    final event = info['event'];
+    if (info['enabled'] == false) {
+      NexusLog.warn('liveActivity: Live Activities are turned OFF for this app (iOS Settings → the app → '
+          'Live Activities) — iOS silently drops every Live Activity push until it is turned back on');
+    }
+    if (event == 'start-failed') {
+      NexusLog.warn('liveActivity: start failed for ${info['activityId']}: ${info['error']}');
+    } else if (event == 'launch') {
+      if ((info['appGroup'] ?? '') != '') unawaited(_prefetchAssets());
+      final running = (info['running'] as List?) ?? const [];
+      NexusLog.debug('liveActivity: enabled=${info['enabled']}, frequentPushes=${info['frequentPushes']}, '
+          'running=${running.length}${running.isEmpty ? '' : ' $running'}'
+          '${(info['appGroup'] ?? '') == '' ? ', no NexusAppGroup (remote images off)' : ', appGroup=${info['appGroup']}'}');
+    } else {
+      NexusLog.debug('liveActivity: $event ${info['activityId'] ?? ''} ${info['state'] ?? info['enabled'] ?? ''}'.trim());
+    }
+  }
+
+  /// iOS: cache the environment's template images into the App Group, so a
+  /// push-started activity can show them (widgets can't download). Once per
+  /// launch — image URLs are immutable, so cached files never go stale.
+  Future<void> _prefetchAssets() async {
+    if (_prefetched) return;
+    _prefetched = true;
+    final res = await _http.post('/partner/live-activities/assets', const {});
+    final urls = (res?['urls'] as List?)?.whereType<String>().toList() ?? const <String>[];
+    if (urls.isEmpty) return;
+    NexusLog.debug('liveActivity: caching ${urls.length} template image(s) for the widget');
+    await cacheImages(urls);
   }
 
   // ---- backend registration ----
@@ -90,14 +138,16 @@ class NexusLiveActivity {
 
   // ---- local start / update / end ----
 
-  /// Start a live activity locally. iOS → ActivityKit (default attributes);
-  /// Android → a live ongoing notification. Also registers the instance so the
-  /// server can update it.
+  /// Start a live activity locally. iOS → ActivityKit (`NexusLiveActivityAttributes`);
+  /// Android → a Live Update. With a [template] (the same JSON the dashboard
+  /// produces) [contentState] is the template's data: `{ step, state, progress,
+  /// etaAt, values }`. Also registers the instance so the server can update it.
   Future<void> start(
     String activityId,
     String activityType,
     Map<String, dynamic> contentState, {
     Map<String, dynamic>? attributes,
+    Map<String, dynamic>? template,
   }) async {
     if (_platform() == 'ios') {
       await NexusPlatform.instance.liveActivityStart(
@@ -105,9 +155,16 @@ class NexusLiveActivity {
         activityType: activityType,
         contentState: contentState,
         attributes: attributes,
+        template: template,
       );
     } else if (_platform() == 'android') {
-      await renderNexusLiveActivity({'event': 'start', 'activityId': activityId, 'contentState': contentState});
+      if (template != null) _localTemplates[activityId] = template;
+      await renderNexusLiveActivity({
+        'event': 'start',
+        'activityId': activityId,
+        'template': ?template,
+        if (template != null) 'data': contentState else 'contentState': contentState,
+      });
       await registerActivity(activityId: activityId, activityType: activityType, platform: 'android', contentState: contentState);
     }
   }
@@ -116,7 +173,13 @@ class NexusLiveActivity {
     if (_platform() == 'ios') {
       await NexusPlatform.instance.liveActivityUpdate(activityId: activityId, contentState: contentState);
     } else if (_platform() == 'android') {
-      await renderNexusLiveActivity({'event': 'update', 'activityId': activityId, 'contentState': contentState});
+      final template = _localTemplates[activityId];
+      await renderNexusLiveActivity({
+        'event': 'update',
+        'activityId': activityId,
+        'template': ?template,
+        if (template != null) 'data': contentState else 'contentState': contentState,
+      });
     }
   }
 
@@ -124,12 +187,17 @@ class NexusLiveActivity {
     if (_platform() == 'ios') {
       await NexusPlatform.instance.liveActivityEnd(activityId: activityId, finalContentState: finalContentState);
     } else if (_platform() == 'android') {
+      _localTemplates.remove(activityId);
       await NexusPlatform.instance.endLiveActivity(activityId.hashCode);
     }
   }
 
-  /// Observe push-to-start tokens (iOS 17.2+) so the server can start activities
-  /// remotely. No-op off iOS.
+  /// iOS: pre-download template image URLs into the App Group, so a server
+  /// push-started activity can show them (the widget itself can't download).
+  /// Activities the SDK sees start are cached automatically.
+  Future<void> cacheImages(List<String> urls) => NexusPlatform.instance.liveActivityCacheImages(urls);
+
+  /// Kept for compatibility — observing now starts automatically in [wire].
   Future<void> observePushToStart(String activityType) =>
       NexusPlatform.instance.liveActivityObservePushToStart(activityType);
 
@@ -146,16 +214,23 @@ class NexusLiveActivity {
   }
 }
 
-/// Render (or end) an Android live ongoing notification from a server payload
-/// `{ event, activityId, contentState }`. Shared by the local API and the FCM
+/// Render (or end) an Android live notification from a server payload —
+/// templated `{ event, activityId, template, data }` or plain `{ event,
+/// activityId, contentState }`. Shared by the local API and the FCM
 /// `nexus_live_activity` data-message handler (foreground + background).
 Future<void> renderNexusLiveActivity(Map<String, dynamic> la) async {
   final event = la['event']?.toString();
   final activityId = la['activityId']?.toString() ?? '';
   if (activityId.isEmpty) return;
   final id = activityId.hashCode;
-  if (event == 'end') {
+  if (event == 'end' && la['data'] == null) {
     await NexusPlatform.instance.endLiveActivity(id);
+    return;
+  }
+  if (la['template'] is Map) {
+    // Native renders the template (and an `end` with final data as a
+    // dismissible final state).
+    await NexusPlatform.instance.showLiveActivityTemplate(id: id, payload: la);
     return;
   }
   final cs = (la['contentState'] as Map?)?.cast<String, dynamic>() ?? const {};
