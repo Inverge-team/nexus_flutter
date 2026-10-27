@@ -50,6 +50,8 @@ export 'src/services/inapp_service.dart' show NexusInApp;
 // Live Activities (iOS ActivityKit + Android live notifications).
 export 'src/services/live_activity_service.dart' show NexusLiveActivity;
 export 'src/services/voice_service.dart' show NexusVoice;
+// Shield — app & device integrity (hardware attestation, device-bound tokens).
+export 'src/shield/shield_service.dart' show NexusShield, NexusShieldToken, NexusShieldClient;
 export 'src/voice/voice_models.dart'
     show NexusCall, NexusJoinToken, CallQualitySample, VoiceCallState, VoiceCallStateX, VoiceEndpointType, VoiceCallDirection;
 export 'src/voice/voice_engine.dart' show NexusVoiceEngine, VoiceEngineState, NoopVoiceEngine;

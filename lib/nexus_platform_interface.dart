@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'nexus_method_channel.dart';
@@ -227,4 +229,32 @@ abstract class NexusPlatform extends PlatformInterface {
   /// platform's own API rather than a permission package. Null where
   /// unimplemented, so callers fall back to `permission_handler`. iOS only.
   Future<bool?> micRequestPermission() async => null;
+
+  // ---- Nexus Shield (app & device integrity) --------------------------------
+
+  /// Ensure the hardware-backed device key [alias] exists and return its public
+  /// key: `{x, y}` (base64url P-256 coordinates), `chain` (Android attestation
+  /// certificates, base64 DER, leaf first; empty on iOS), `hardware`
+  /// (`strongbox|tee|secure_enclave|software`) and `created`. A newly created
+  /// Android key is certified for [attestationChallenge]. Null where unsupported.
+  Future<Map<String, Object?>?> shieldEnsureKey(String alias, {Uint8List? attestationChallenge}) async => null;
+
+  /// ECDSA-SHA256 signature (DER) of [data] with the device key.
+  Future<Uint8List?> shieldSign(String alias, Uint8List data) async => null;
+
+  /// Delete the device key (a fresh, freshly-attested one is made next time).
+  Future<void> shieldDeleteKey(String alias) async {}
+
+  /// Android: a Play Integrity standard token whose request hash is [requestHash].
+  Future<String?> shieldPlayIntegrity(String cloudProjectNumber, String requestHash) async => null;
+
+  /// iOS: whether App Attest works here (false on the Simulator).
+  Future<bool> shieldAppAttestSupported() async => false;
+
+  /// iOS: attest (first time) or assert with the App Attest key over
+  /// [clientDataHash]. Returns `{keyId, attestation|assertion, mode}`.
+  Future<Map<String, Object?>?> shieldAppAttest(Uint8List clientDataHash, {bool forceAttest = false}) async => null;
+
+  /// iOS: forget the App Attest key id (the next call attests a new key).
+  Future<void> shieldAppAttestReset() async {}
 }

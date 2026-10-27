@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -27,6 +28,8 @@ import 'voice/voice_headless.dart' show persistVoiceConfig;
 import 'services/replay_service.dart';
 import 'services/sessions_service.dart';
 import 'services/surveys_service.dart';
+import 'shield/shield_http_overrides.dart';
+import 'shield/shield_service.dart';
 
 /// The Nexus umbrella SDK — one entry point for every service. Initialise once
 /// at startup; then use any service, all correlated to the same journey session:
@@ -82,6 +85,9 @@ class Nexus {
   late final NexusLiveActivity liveActivity;
   late final NexusVoice voice;
 
+  /// App & device integrity (see [NexusShield]).
+  late final NexusShield shield;
+
   /// Initialise the SDK once at startup. Re-calling disposes the previous
   /// instance and replaces it.
   static Future<Nexus> init(NexusConfig config) async {
@@ -127,6 +133,18 @@ class Nexus {
     inApp = NexusInApp(_http, _identity, config);
     liveActivity = NexusLiveActivity(_http, _identity);
     if (config.liveActivityEnabled) liveActivity.wire();
+    shield = NexusShield(_http, config)..appId = _identity.deviceContext['appId'] as String?;
+    if (config.shieldEnabled) {
+      registerGlobalShield(() => Nexus.isInitialized ? Nexus.instance.shield : null);
+      if (config.shieldProtectNexus) {
+        _http.signer = (method, url, body) => shield.headers(method: method, url: url, body: body);
+      }
+      // Sign the app's own API calls with no interceptor (dart:io clients).
+      if (config.shieldHosts.isNotEmpty && !kIsWeb) {
+        NexusShieldHttpOverrides.install(shield, config.shieldHosts);
+      }
+      unawaited(shield.start());
+    }
     voice = NexusVoice(_http, _identity, realtime);
     if (config.voiceEnabled) {
       // Persist the minimum the HEADLESS call isolate needs (it shares no state
@@ -393,6 +411,8 @@ class Nexus {
     links.dispose();
     unawaited(push.dispose());
     realtime.disconnect();
+    shield.dispose();
+    if (!kIsWeb) NexusShieldHttpOverrides.uninstall();
     _outbox.dispose();
     _http.close();
     if (identical(_instance, this)) _instance = null;

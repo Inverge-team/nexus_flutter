@@ -46,6 +46,11 @@ class NexusConfig {
     this.pushAndroidChannelId = 'nexus_default',
     this.pushAndroidChannelName = 'Notifications',
     this.linksEnabled = true,
+    this.shieldEnabled = false,
+    this.shieldApp,
+    this.shieldDebugToken,
+    this.shieldProtectNexus = false,
+    this.shieldHosts = const [],
     this.linkDomains = const [],
     this.autoRouteDeepLinks = true,
     this.onDeepLink,
@@ -213,6 +218,34 @@ class NexusConfig {
   /// app open that came from a Nexus link, and route the user to the link's
   /// deep-link value. No code needed. Default `true`.
   final bool linksEnabled;
+
+  /// Nexus Shield: obtain hardware-attested, device-bound tokens so your
+  /// backend (and Nexus) can tell genuine app traffic from scripts, emulators
+  /// and modified builds. Register the app in the console (Shield → Apps)
+  /// first. Default `false`.
+  final bool shieldEnabled;
+
+  /// Which Shield app this build is. Defaults to `android:<package>` /
+  /// `ios:<bundle id>`; set it only if the console registration differs.
+  final String? shieldApp;
+
+  /// A console-issued debug token, for emulators/simulators and CI, where
+  /// hardware attestation is unavailable. NEVER ship it in a release build —
+  /// e.g. `shieldDebugToken: kDebugMode ? 'nxsd_…' : null`.
+  final String? shieldDebugToken;
+
+  /// Also attach Shield headers to the SDK's own Nexus requests, so Nexus
+  /// routes protected by a `nexus:` policy accept this app. Default `false`.
+  final bool shieldProtectNexus;
+
+  /// Hosts whose requests are signed AUTOMATICALLY — every `dart:io` request
+  /// (Dio, `package:http`, `HttpClient`) to them gets `X-Nexus-Shield` + a
+  /// single-use `DPoP` proof, with no interceptor to wire. Exact hosts
+  /// (`api.example.com`) or wildcards (`*.example.com`). Only your own API
+  /// belongs here — never third parties (maps, analytics), which would then
+  /// receive your token. Empty (default) = sign only where you ask
+  /// (`shield.headers()`, `NexusShieldClient`, `NexusShieldDioInterceptor`).
+  final List<String> shieldHosts;
 
   /// Extra hosts that serve your Nexus short links (a branded domain). The
   /// [baseUrl] host is always included.

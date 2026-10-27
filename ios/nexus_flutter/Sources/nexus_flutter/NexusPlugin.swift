@@ -90,6 +90,8 @@ public class NexusPlugin: NSObject, FlutterPlugin {
       result(nil)
     case "installReferrer":
       result(nil) // Apple has no install referrer; installs match server-side.
+    case "shieldEnsureKey", "shieldSign", "shieldDeleteKey", "shieldAppAttestSupported", "shieldAppAttest", "shieldAppAttestReset":
+      NexusShield.handle(call, result)
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -235,6 +237,7 @@ public class NexusPlugin: NSObject, FlutterPlugin {
       "osVersion": UIDevice.current.systemVersion,
       "deviceModel": UIDevice.current.model,
       "deviceKey": UIDevice.current.identifierForVendor?.uuidString as Any,
+      "appId": Bundle.main.bundleIdentifier as Any,
     ]
     // iOS exposes no public install-date API — approximate: the app container's
     // creation date ~= install time; the executable's modification date ~= update.

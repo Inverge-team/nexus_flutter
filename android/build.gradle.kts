@@ -83,6 +83,9 @@ dependencies {
     // app on first launch, so an Android install is an exact (deterministic)
     // attribution match instead of an IP guess.
     implementation("com.android.installreferrer:installreferrer:2.2")
+    // Nexus Shield: Play Integrity standard requests (hardware key attestation
+    // needs nothing — it is the platform Keystore).
+    implementation("com.google.android.play:integrity:1.6.0")
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("org.mockito:mockito-core:5.0.0")
 }

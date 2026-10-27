@@ -1,3 +1,56 @@
+## 1.11.0
+
+**Nexus Shield** — app & device integrity: your backend (and Nexus) can tell
+requests from your genuine app on a real device apart from scripts,
+emulators, modified builds and stolen tokens. Opt-in (`shieldEnabled`);
+nothing changes for apps that don't turn it on.
+
+### Added — Shield
+- **One-line protection:** `NexusConfig(shieldEnabled: true, shieldHosts:
+  ['api.example.com'])`. Every request to those hosts — Dio, `package:http`,
+  `HttpClient` — is signed automatically with `X-Nexus-Shield` (a
+  device-bound token) and `DPoP` (a single-use proof for that exact method +
+  URL). No interceptor to wire. Wildcards (`*.example.com`) work; any
+  `HttpOverrides` the app installed earlier is chained, not replaced.
+  Third-party hosts never receive the token.
+- **Android:** the device key is generated inside StrongBox (or the TEE) and
+  certified by Google's hardware key attestation — verified offline by Nexus,
+  so it works without Play services. Play Integrity (standard requests) is
+  added automatically when the app has a Google Cloud project number in the
+  console, and the two are cross-checked server-side to catch spoofed verdicts.
+- **iOS:** the device key lives in the Secure Enclave; Apple App Attest
+  certifies it once, then every exchange is a counter-checked assertion.
+  Needs the `com.apple.developer.devicecheck.appattest-environment`
+  entitlement.
+- **Device-bound tokens (RFC 9449 DPoP):** a token copied off the device is
+  useless — every request needs a fresh proof signed by the non-exportable
+  hardware key. Tokens refresh before they expire; failures back off and
+  never throw into app code (requests go out unsigned and your backend's
+  policy decides).
+- Manual APIs when you need them: `Nexus.instance.shield.headers(method:,
+  url:, body:)` (pass `body` to bind the proof to the payload),
+  `NexusShieldClient` (a `package:http` client) and
+  `NexusShieldDioInterceptor` (`package:nexus_flutter/nexus_dio.dart`; for
+  web or clients that bypass `dart:io`). `shield.token()`, `shield.current`
+  (score + trust level), `onToken`, `onRefused`, `reset()`.
+- `shieldDebugToken` — a console-issued token for emulators/simulators and
+  CI, where hardware attestation is unavailable. Pass it only in debug builds.
+- `shieldProtectNexus` — also sign the SDK's own Nexus calls, for Nexus routes
+  protected by a `nexus:` policy.
+- `shieldApp` — override which console app this build is (defaults to
+  `android:<package>` / `ios:<bundle id>`; a debug `applicationIdSuffix` is
+  its own app).
+
+### Native
+- Android: `com.google.android.play:integrity:1.6.0` (Play Integrity
+  standard API). Hardware attestation uses the platform Keystore — no extra
+  dependency.
+- iOS: `DeviceCheck` + `CryptoKit` (system frameworks).
+- `deviceInfo` now reports the package / bundle id (`appId`).
+
+### Dependencies
+- Adds `crypto`.
+
 ## 1.10.0
 
 Live Activities, designed in the console. Backward compatible: the plain

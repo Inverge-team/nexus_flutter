@@ -30,6 +30,7 @@ import net.inverge.nexus.core.NexusNdk
 import net.inverge.nexus.core.NexusReplayRecorder
 import net.inverge.nexus.links.NexusLinkActivity
 import net.inverge.nexus.liveactivity.NexusLiveUpdate
+import net.inverge.nexus.shield.NexusShield
 import com.android.installreferrer.api.InstallReferrerClient
 import com.android.installreferrer.api.InstallReferrerStateListener
 
@@ -55,6 +56,10 @@ class NexusPlugin :
     private var ndk: NexusNdk? = null
     private var activityBinding: ActivityPluginBinding? = null
     private val io = Executors.newSingleThreadExecutor() // notification image downloads
+    // Keystore key generation (StrongBox especially) can take a second or more:
+    // never on the platform thread.
+    private val shieldIo = Executors.newSingleThreadExecutor()
+    private val shield: NexusShield? by lazy { appContext?.let { NexusShield(it) } }
 
     // Deep links seen before Dart asked for them (cold start), then live.
     private val pendingLinks = ArrayList<String>()
@@ -84,6 +89,50 @@ class NexusPlugin :
                 override fun onReject(callId: String) = emitCall("onCallReject", callId)
                 override fun onDisconnect(callId: String) = emitCall("onCallDisconnect", callId)
             }
+    }
+
+    /** Nexus Shield — hardware key + Play Integrity. Results always hop back to main. */
+    private fun handleShield(call: MethodCall, result: Result) {
+        val s = shield ?: return result.error("shield_unavailable", "no context", null)
+        val alias = call.argument<String>("alias") ?: "nexus_shield"
+        fun ok(v: Any?) = main.post { result.success(v) }
+        fun fail(code: String, e: Throwable) = main.post { result.error(code, e.message ?: e.javaClass.simpleName, null) }
+        when (call.method) {
+            "shieldEnsureKey" -> shieldIo.execute {
+                try {
+                    ok(s.ensureKey(alias, call.argument<ByteArray>("attestationChallenge")))
+                } catch (e: Throwable) {
+                    fail("shield_key", e)
+                }
+            }
+            "shieldSign" -> shieldIo.execute {
+                try {
+                    ok(s.sign(alias, call.argument<ByteArray>("data") ?: ByteArray(0)))
+                } catch (e: Throwable) {
+                    fail("shield_sign", e)
+                }
+            }
+            "shieldDeleteKey" -> shieldIo.execute {
+                try {
+                    s.deleteKey(alias)
+                    ok(null)
+                } catch (e: Throwable) {
+                    fail("shield_key", e)
+                }
+            }
+            "shieldPlayIntegrity" -> {
+                val project = call.argument<String>("cloudProjectNumber")?.toLongOrNull()
+                    ?: return result.error("shield_play", "cloudProjectNumber missing", null)
+                val hash = call.argument<String>("requestHash") ?: ""
+                try {
+                    s.playIntegrity(project, hash) { token, err ->
+                        main.post { if (token != null) result.success(token) else result.error("shield_play", err, null) }
+                    }
+                } catch (e: Throwable) {
+                    result.error("shield_play", e.message, null)
+                }
+            }
+        }
     }
 
     private fun emitCall(method: String, callId: String) {
@@ -165,6 +214,7 @@ class NexusPlugin :
                 result.success(null)
             }
             "installReferrer" -> installReferrer(result)
+            "shieldEnsureKey", "shieldSign", "shieldDeleteKey", "shieldPlayIntegrity" -> handleShield(call, result)
             "showNotification" -> showNotification(call, result)
             "showLiveActivity" -> showLiveActivity(call, result)
             "showLiveActivityTemplate" -> showLiveActivityTemplate(call, result)
@@ -533,6 +583,7 @@ class NexusPlugin :
         try {
             val pm = ctx.packageManager
             val pkg = ctx.packageName
+            info["appId"] = pkg
             @Suppress("DEPRECATION")
             val pInfo = pm.getPackageInfo(pkg, 0)
             info["installTime"] = pInfo.firstInstallTime // epoch ms

@@ -484,4 +484,50 @@ class MethodChannelNexus extends NexusPlatform {
     } catch (_) {}
     return const {};
   }
+
+  // ---- Nexus Shield ------------------------------------------------------------
+
+  @override
+  Future<Map<String, Object?>?> shieldEnsureKey(String alias, {Uint8List? attestationChallenge}) async {
+    final r = await methodChannel.invokeMethod<Map<Object?, Object?>>('shieldEnsureKey', {
+      'alias': alias,
+      'attestationChallenge': ?attestationChallenge,
+    });
+    return r?.map((k, v) => MapEntry(k.toString(), v));
+  }
+
+  @override
+  Future<Uint8List?> shieldSign(String alias, Uint8List data) =>
+      methodChannel.invokeMethod<Uint8List>('shieldSign', {'alias': alias, 'data': data});
+
+  @override
+  Future<void> shieldDeleteKey(String alias) => methodChannel.invokeMethod<void>('shieldDeleteKey', {'alias': alias});
+
+  @override
+  Future<String?> shieldPlayIntegrity(String cloudProjectNumber, String requestHash) =>
+      methodChannel.invokeMethod<String>('shieldPlayIntegrity', {
+        'cloudProjectNumber': cloudProjectNumber,
+        'requestHash': requestHash,
+      });
+
+  @override
+  Future<bool> shieldAppAttestSupported() async {
+    try {
+      return await methodChannel.invokeMethod<bool>('shieldAppAttestSupported') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<Map<String, Object?>?> shieldAppAttest(Uint8List clientDataHash, {bool forceAttest = false}) async {
+    final r = await methodChannel.invokeMethod<Map<Object?, Object?>>('shieldAppAttest', {
+      'clientDataHash': clientDataHash,
+      'forceAttest': forceAttest,
+    });
+    return r?.map((k, v) => MapEntry(k.toString(), v));
+  }
+
+  @override
+  Future<void> shieldAppAttestReset() => methodChannel.invokeMethod<void>('shieldAppAttestReset');
 }
