@@ -1,5 +1,8 @@
 import 'dart:async';
 
+import 'docstore/client.dart' show DocStoreOptions, DocStoreTokenProvider;
+import 'docstore/docstore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -22,9 +25,13 @@ import 'services/live_activity_service.dart';
 import 'services/push_service.dart';
 import 'services/realtime_service.dart';
 import 'services/remote_config_service.dart';
+import 'services/voice_service.dart';
+import 'voice/voice_headless.dart' show persistVoiceConfig;
 import 'services/replay_service.dart';
 import 'services/sessions_service.dart';
 import 'services/surveys_service.dart';
+import 'shield/shield_http_overrides.dart';
+import 'shield/shield_service.dart';
 
 /// The Nexus umbrella SDK — one entry point for every service. Initialise once
 /// at startup; then use any service, all correlated to the same journey session:
@@ -78,6 +85,18 @@ class Nexus {
   late final NexusPush push;
   late final NexusInApp inApp;
   late final NexusLiveActivity liveActivity;
+  late final NexusVoice voice;
+
+  /// App & device integrity (see [NexusShield]).
+  late final NexusShield shield;
+
+  /// Nexus DocStore with this SDK's API key and base URL. Pass [getToken] for
+  /// the signed-in end user (security rules see it as `auth`). Keep the client
+  /// you get — each call creates a new one (and its own live connection).
+  NexusDocStore docStore({DocStoreTokenProvider? getToken, Duration timeout = const Duration(seconds: 30)}) => NexusDocStore(
+        DocStoreOptions(apiKey: config.apiKey, baseUrl: config.httpBase, realtimeUrl: config.socketBase, getToken: getToken, timeout: timeout),
+        enabled: () => config.docStoreEnabled,
+      );
 
   /// Initialise the SDK once at startup. Re-calling disposes the previous
   /// instance and replaces it.
@@ -115,7 +134,7 @@ class Nexus {
     errors = NexusErrors(_outbox, _identity, config);
     logs = NexusLogs(_outbox, _identity, config);
     flags = NexusFlags(_http, _identity, config);
-    links = NexusLinks(_http, _identity);
+    links = NexusLinks(_http, _identity, config);
     realtime = NexusRealtime(config, _identity);
     replay = NexusReplay(_outbox, _identity, config);
     surveys = NexusSurveys(_http, _identity, config);
@@ -124,6 +143,30 @@ class Nexus {
     inApp = NexusInApp(_http, _identity, config);
     liveActivity = NexusLiveActivity(_http, _identity);
     if (config.liveActivityEnabled) liveActivity.wire();
+    shield = NexusShield(_http, config)..appId = _identity.deviceContext['appId'] as String?;
+    if (config.shieldEnabled) {
+      registerGlobalShield(() => Nexus.isInitialized ? Nexus.instance.shield : null);
+      if (config.shieldProtectNexus) {
+        _http.signer = (method, url, body) => shield.headers(method: method, url: url, body: body);
+      }
+      // Sign the app's own API calls with no interceptor (dart:io clients).
+      if (config.shieldHosts.isNotEmpty && !kIsWeb) {
+        NexusShieldHttpOverrides.install(shield, config.shieldHosts);
+      }
+      unawaited(shield.start());
+    }
+    voice = NexusVoice(_http, _identity, realtime);
+    if (config.voiceEnabled) {
+      // Persist the minimum the HEADLESS call isolate needs (it shares no state
+      // with the app) so an answered call can reach the backend without the app.
+      unawaited(persistVoiceConfig(
+        base: config.httpBase,
+        apiKey: config.apiKey,
+        osType: _identity.deviceContext['osType'] as String?,
+        osVersion: _identity.deviceContext['osVersion'] as String?,
+      ));
+      unawaited(voice.init());
+    }
     // Event-triggered surveys + in-app messages fire off analytics events;
     // in-app `event`-action buttons track events back.
     events.onTracked = (name) {
@@ -131,9 +174,10 @@ class Nexus {
       inApp.onEvent(name);
     };
     inApp.onTrackEvent = (event) => events.track(event);
+    inApp.attachRealtime(realtime);
 
     // Auto-mount the survey + in-app overlays (no MaterialApp.builder needed).
-    if (config.autoShowOverlay && (config.surveysEnabled || config.inAppEnabled)) {
+    if (config.autoShowOverlay && (config.surveysEnabled || config.inAppEnabled || config.voiceEnabled)) {
       _autoOverlay = NexusAutoOverlay();
       WidgetsBinding.instance.addPostFrameCallback((_) => _autoOverlay?.ensureAttached());
       // Re-attach lazily if a survey/message wants to show before/after a rebuild.
@@ -157,6 +201,10 @@ class Nexus {
       _realtimeWasConnected = true;
       NexusLog.info('realtime auto-connecting');
     }
+
+    // Deep links: install (first launch) + link opens, reported and routed
+    // automatically. After session tracking so attribution joins the session.
+    if (config.linksEnabled) unawaited(links.start());
 
     if (config.replayEnabled) {
       await replay.start();
@@ -200,10 +248,13 @@ class Nexus {
   Future<void> _onBackground() async {
     NexusLog.debug('app backgrounded — flushing telemetry');
     if (config.replayEnabled) replay.pause(); // can't rasterize a suspended app
-    _realtimeWasConnected = realtime.isConnected;
+    // `isActive`, not `isConnected`: a socket that is mid-reconnect when the app
+    // backgrounds (e.g. the link dropped just before the screen locked) must
+    // still come back on foreground.
+    _realtimeWasConnected = realtime.isActive;
     // Graceful disconnect → the server meters the exact connected duration
     // instead of over-counting until a ping timeout while the app is suspended.
-    if (config.manageRealtimeWithLifecycle && realtime.isConnected) {
+    if (config.manageRealtimeWithLifecycle && realtime.isActive) {
       realtime.disconnect();
     }
     if (config.flushOnBackground) await flush();
@@ -255,6 +306,9 @@ class Nexus {
     if (stored == null) return;
     _identity.distinctId = stored.distinctId;
     _identity.traits.addAll(stored.traits);
+    _identity.email = stored.email;
+    _identity.name = stored.name;
+    _identity.phone = stored.phone;
     NexusLog.info('restored identity — distinctId=${stored.distinctId}');
   }
 
@@ -304,17 +358,28 @@ class Nexus {
     String? name,
     String? phone,
     Map<String, Object?>? traits,
-  }) => sessions.identify(
-    distinctId,
-    email: email,
-    name: name,
-    phone: phone,
-    traits: traits,
-  );
+  }) async {
+    await sessions.identify(
+      distinctId,
+      email: email,
+      name: name,
+      phone: phone,
+      traits: traits,
+    );
+    // Voice binds its realtime room + push device at init (before login), so
+    // re-bind to the newly-identified user — otherwise incoming calls would keep
+    // ringing on the pre-login device room, never on `voice:<distinctId>`.
+    if (config.voiceEnabled) await voice.rebindIdentity();
+  }
 
   /// Forget the current user and start a fresh session (e.g. on logout). Also
   /// clears the persisted identity so the next launch starts anonymous.
-  Future<void> reset() => sessions.reset();
+  Future<void> reset() async {
+    await sessions.reset();
+    // Drop back to the anonymous device room so a logged-out device no longer
+    // rings for the previous user.
+    if (config.voiceEnabled) await voice.rebindIdentity();
+  }
 
   /// Record a screen/page change for session replay's Pages tab. Wire
   /// [NexusNavigatorObserver] into `navigatorObservers` to do this automatically.
@@ -353,8 +418,11 @@ class Nexus {
     surveys.dispose();
     inApp.dispose();
     remoteConfig.dispose();
+    links.dispose();
     unawaited(push.dispose());
     realtime.disconnect();
+    shield.dispose();
+    if (!kIsWeb) NexusShieldHttpOverrides.uninstall();
     _outbox.dispose();
     _http.close();
     if (identical(_instance, this)) _instance = null;

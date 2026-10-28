@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'nexus_method_channel.dart';
@@ -67,6 +69,23 @@ abstract class NexusPlatform extends PlatformInterface {
   /// Receives the decoded [payload] map so the caller can attribute the open.
   void onNotificationTap(void Function(Map<String, dynamic> data) sink) {}
 
+  /// Deep links (Nexus links). Native code sees every URL that opens the app
+  /// before Flutter does; it queues them until Dart asks, so a cold-start link
+  /// is never lost to the engine starting first. Returns the queued URLs and
+  /// switches native to live delivery via [onLinkOpened].
+  Future<List<String>> linksTakePending() async => const [];
+
+  /// Register a sink for links opened while the app is running.
+  void onLinkOpened(void Function(String url) sink) {}
+
+  /// Tell native which hosts serve Nexus short links, so it can consume them
+  /// (keep them away from the app's router) on the NEXT cold start too.
+  Future<void> linksConfigure(List<String> hosts) async {}
+
+  /// Android only: the Google Play install referrer (e.g. `link_click_id=…`),
+  /// or null where unavailable (iOS, sideloaded, not yet installed via Play).
+  Future<String?> installReferrer() async => null;
+
   /// Post or update an Android live ongoing notification (the Android equivalent
   /// of an iOS Live Activity). Uses a promoted Live Update (ProgressStyle) on
   /// Android 16+, a normal ongoing notification with a progress bar otherwise.
@@ -87,6 +106,15 @@ abstract class NexusPlatform extends PlatformInterface {
   /// Remove an Android live ongoing notification (end of a live activity).
   Future<void> endLiveActivity(int id) async {}
 
+  /// Render a Nexus Live Activity template on Android: a promoted Live Update
+  /// (`ProgressStyle` — segments/points/tracker icon, status chip, ETA countdown)
+  /// on Android 16+, an ongoing notification with a progress bar otherwise.
+  /// [payload] is `{ event, activityId, template, data }`. Returns `true` if shown.
+  Future<bool> showLiveActivityTemplate({required int id, required Map<String, dynamic> payload}) async => false;
+
+  /// iOS: download template images into the App Group so the widget can show them.
+  Future<void> liveActivityCacheImages(List<String> urls) async {}
+
   // ---- iOS ActivityKit bridge (no-ops on other platforms) ----
 
   /// Start an iOS Live Activity (ActivityKit) with the turn-key default
@@ -96,6 +124,7 @@ abstract class NexusPlatform extends PlatformInterface {
     required String activityType,
     required Map<String, dynamic> contentState,
     Map<String, dynamic>? attributes,
+    Map<String, dynamic>? template,
   }) async {}
 
   /// Update a running iOS Live Activity's content state.
@@ -107,11 +136,125 @@ abstract class NexusPlatform extends PlatformInterface {
   /// End a running iOS Live Activity.
   Future<void> liveActivityEnd({required String activityId, Map<String, dynamic>? finalContentState}) async {}
 
-  /// Observe push-to-start tokens (iOS 17.2+) for an activity type; tokens are
-  /// delivered via [onLiveActivityToken].
+  /// Start observing ActivityKit: push-to-start tokens (iOS 17.2+), push-started
+  /// activities' update tokens, and diagnostics — all via [onLiveActivityToken].
   Future<void> liveActivityObservePushToStart(String activityType) async {}
 
   /// Register a sink for ActivityKit tokens. `info` carries
-  /// `{ kind: 'pushToStart'|'update', activityType?, activityId?, token }`.
+  /// `{ kind: 'pushToStart'|'update', activityType?, activityId?, token }` or a
+  /// diagnostic `{ kind: 'status', event, … }`.
   void onLiveActivityToken(void Function(Map<String, dynamic> info) sink) {}
+
+  // ---- Native voice (self-managed Telecom / CallKit) ----
+
+  /// Register the self-managed phone account so the OS routes our calls through
+  /// the native call UI. Call once at startup. No-op where unsupported.
+  Future<void> voiceRegisterAccount() async {}
+
+  /// Ask the OS to ring [callId] in the SYSTEM call UI (over the lock screen).
+  /// The call is answered NATIVELY — the app is never forced open.
+  Future<void> voiceReportIncoming({
+    required String callId,
+    required String from,
+    String? displayName,
+    String? avatarUrl,
+    bool hasVideo = false,
+  }) async {}
+
+  /// End a native call (local hangup / remote-left) so the system UI clears.
+  Future<void> voiceEndCall(String callId) async {}
+
+  /// The caller cancelled before we answered — clear the ring and leave a
+  /// "Missed call" notification, like a native phone call.
+  Future<void> voiceMissedCall({
+    required String callId,
+    required String from,
+    String? displayName,
+    String? avatarUrl,
+  }) async {}
+
+  /// Register a sink for native call actions the user took in the SYSTEM UI.
+  /// `action` is `answer` | `reject` | `disconnect`; `callId` identifies the call.
+  void onNativeCallEvent(void Function(String action, String callId) sink) {}
+
+  /// Start a native OUTGOING call entry. iOS only in practice: under CallKit the
+  /// audio session is activated only for a call the OS knows about, so an
+  /// unreported outbound call has no audio. Android deliberately skips this (a
+  /// self-managed outgoing Connection can auto-end and tear down a live call).
+  Future<void> voiceReportOutgoing({
+    required String callId,
+    required String to,
+    String? displayName,
+  }) async {}
+
+  /// Tell the OS the call connected (starts its timer / active-call UI).
+  Future<void> voiceReportConnected(String callId) async {}
+
+  /// The device's APNs VoIP (PushKit) token, registered with the Voice control
+  /// plane so a killed app can be rung. Null off iOS / before the token arrives.
+  Future<String?> voiceVoipToken() async => null;
+
+  /// Register a sink for in-call controls the user drove from the SYSTEM call UI
+  /// (mute / hold / DTMF keypad). `action` is `mute` | `hold` | `dtmf`; [value]
+  /// is the bool or digit string. iOS/CallKit only — Android's self-managed UI
+  /// has no system in-call controls.
+  void onNativeCallControl(void Function(String action, String callId, Object? value) sink) {}
+
+  /// Register a sink for the external call system's audio-session window (iOS
+  /// CallKit `didActivate`/`didDeactivate`). The media engine may only run its
+  /// audio engine while this is `true`.
+  void onNativeCallAudioSession(void Function(bool active) sink) {}
+
+  /// Register a sink for incoming-call payloads delivered natively (iOS APNs
+  /// VoIP/PushKit). On Android the equivalent arrives as an FCM data message
+  /// handled in Dart, so this never fires there.
+  void onNativeVoicePush(void Function(Map<String, dynamic> data) sink) {}
+
+  /// Register a sink for APNs VoIP token updates (iOS PushKit).
+  void onNativeVoipToken(void Function(String token) sink) {}
+
+  /// Whether the app is in the foreground. Answered authoritatively on iOS
+  /// (`UIApplication.applicationState`), where a VoIP push can launch the app in
+  /// the BACKGROUND and no permission dialog can be presented. Defaults to true
+  /// where unimplemented, preserving the caller's normal behaviour.
+  Future<bool> appIsForeground() async => true;
+
+  /// The OS microphone authorization: `granted` | `denied` | `restricted` |
+  /// `undetermined`. Null where unimplemented (callers then fall back to
+  /// `permission_handler`). iOS only — and necessary there because
+  /// `permission_handler` cannot distinguish "never asked" from "refused".
+  Future<String?> micPermissionStatus() async => null;
+
+  /// Ask the OS for the microphone and return whether it was granted, using the
+  /// platform's own API rather than a permission package. Null where
+  /// unimplemented, so callers fall back to `permission_handler`. iOS only.
+  Future<bool?> micRequestPermission() async => null;
+
+  // ---- Nexus Shield (app & device integrity) --------------------------------
+
+  /// Ensure the hardware-backed device key [alias] exists and return its public
+  /// key: `{x, y}` (base64url P-256 coordinates), `chain` (Android attestation
+  /// certificates, base64 DER, leaf first; empty on iOS), `hardware`
+  /// (`strongbox|tee|secure_enclave|software`) and `created`. A newly created
+  /// Android key is certified for [attestationChallenge]. Null where unsupported.
+  Future<Map<String, Object?>?> shieldEnsureKey(String alias, {Uint8List? attestationChallenge}) async => null;
+
+  /// ECDSA-SHA256 signature (DER) of [data] with the device key.
+  Future<Uint8List?> shieldSign(String alias, Uint8List data) async => null;
+
+  /// Delete the device key (a fresh, freshly-attested one is made next time).
+  Future<void> shieldDeleteKey(String alias) async {}
+
+  /// Android: a Play Integrity standard token whose request hash is [requestHash].
+  Future<String?> shieldPlayIntegrity(String cloudProjectNumber, String requestHash) async => null;
+
+  /// iOS: whether App Attest works here (false on the Simulator).
+  Future<bool> shieldAppAttestSupported() async => false;
+
+  /// iOS: attest (first time) or assert with the App Attest key over
+  /// [clientDataHash]. Returns `{keyId, attestation|assertion, mode}`.
+  Future<Map<String, Object?>?> shieldAppAttest(Uint8List clientDataHash, {bool forceAttest = false}) async => null;
+
+  /// iOS: forget the App Attest key id (the next call attests a new key).
+  Future<void> shieldAppAttestReset() async {}
 }

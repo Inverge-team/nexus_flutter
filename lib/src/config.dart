@@ -1,4 +1,11 @@
+import 'dart:async';
+
 import 'logging.dart';
+import 'services/links_service.dart' show NexusDeepLink;
+
+/// Decide what to do with a Nexus deep link. Return `true` when the app handled
+/// the navigation itself; `false` lets the SDK route to [NexusDeepLink.path].
+typedef NexusDeepLinkHandler = FutureOr<bool> Function(NexusDeepLink link);
 
 /// Configuration for [Nexus.init].
 class NexusConfig {
@@ -28,6 +35,8 @@ class NexusConfig {
     this.inAppAutoShow = true,
     this.autoShowOverlay = true,
     this.liveActivityEnabled = false,
+    this.voiceEnabled = false,
+    this.docStoreEnabled = true,
     this.remoteConfigEnabled = false,
     this.remoteConfigRealtime = false,
     this.remoteConfigDefaults = const {},
@@ -37,6 +46,15 @@ class NexusConfig {
     this.pushForegroundDisplay = true,
     this.pushAndroidChannelId = 'nexus_default',
     this.pushAndroidChannelName = 'Notifications',
+    this.linksEnabled = true,
+    this.shieldEnabled = false,
+    this.shieldApp,
+    this.shieldDebugToken,
+    this.shieldProtectNexus = false,
+    this.shieldHosts = const [],
+    this.linkDomains = const [],
+    this.autoRouteDeepLinks = true,
+    this.onDeepLink,
     this.appVersion,
     this.defaultProperties = const {},
   });
@@ -154,6 +172,17 @@ class NexusConfig {
   /// `nexus.liveActivity`. Default `false`.
   final bool liveActivityEnabled;
 
+  /// Enable Nexus Voice (CPaaS calling). Exposes `nexus.voice` — place/answer
+  /// calls, in-call controls, DTMF, quality. Register a media engine (WebRTC)
+  /// and optionally CallKit to actually carry audio / show the native call UI.
+  /// Default `false`.
+  final bool voiceEnabled;
+
+  /// DocStore (`Nexus.instance.docStore()`) is on by default — it does nothing
+  /// until you use it. `false` makes every DocStore call throw
+  /// `DocStoreException(code: 'service_disabled')` without a request.
+  final bool docStoreEnabled;
+
   /// Fetch Remote Config at startup (and on foreground). Read values via
   /// `nexus.remoteConfig.getString(...)` etc. Default `false` (billed per fetch
   /// — opt in). Set in-app fallbacks with [remoteConfigDefaults].
@@ -189,6 +218,56 @@ class NexusConfig {
   /// Human-readable name for [pushAndroidChannelId], shown in Android system
   /// settings. Default `Notifications`.
   final String pushAndroidChannelName;
+
+  /// Nexus Links, automatically: report the install on first launch (with the
+  /// Google Play install referrer on Android, for an exact match), report every
+  /// app open that came from a Nexus link, and route the user to the link's
+  /// deep-link value. No code needed. Default `true`.
+  final bool linksEnabled;
+
+  /// Nexus Shield: obtain hardware-attested, device-bound tokens so your
+  /// backend (and Nexus) can tell genuine app traffic from scripts, emulators
+  /// and modified builds. Register the app in the console (Shield → Apps)
+  /// first. Default `false`.
+  final bool shieldEnabled;
+
+  /// Which Shield app this build is. Defaults to `android:<package>` /
+  /// `ios:<bundle id>`; set it only if the console registration differs.
+  final String? shieldApp;
+
+  /// A console-issued debug token, for emulators/simulators and CI, where
+  /// hardware attestation is unavailable. NEVER ship it in a release build —
+  /// e.g. `shieldDebugToken: kDebugMode ? 'nxsd_…' : null`.
+  final String? shieldDebugToken;
+
+  /// Also attach Shield headers to the SDK's own Nexus requests, so Nexus
+  /// routes protected by a `nexus:` policy accept this app. Default `false`.
+  final bool shieldProtectNexus;
+
+  /// Hosts whose requests are signed AUTOMATICALLY — every `dart:io` request
+  /// (Dio, `package:http`, `HttpClient`) to them gets `X-Nexus-Shield` + a
+  /// single-use `DPoP` proof, with no interceptor to wire. Exact hosts
+  /// (`api.example.com`) or wildcards (`*.example.com`). Only your own API
+  /// belongs here — never third parties (maps, analytics), which would then
+  /// receive your token. Empty (default) = sign only where you ask
+  /// (`shield.headers()`, `NexusShieldClient`, `NexusShieldDioInterceptor`).
+  final List<String> shieldHosts;
+
+  /// Extra hosts that serve your Nexus short links (a branded domain). The
+  /// [baseUrl] host is always included.
+  final List<String> linkDomains;
+
+  /// Navigate to a link's deep-link value when the app's router could not have
+  /// seen it itself: after an install (deferred deep link) and when the app was
+  /// opened by the short link directly (App Links / Universal Links). The SDK
+  /// delivers it as a platform deep link, so go_router, auto_route or a plain
+  /// Navigator route it exactly like one. Default `true`.
+  final bool autoRouteDeepLinks;
+
+  /// Called for every Nexus deep link before the SDK routes it — return `true`
+  /// to take over (e.g. hold it until after login; see
+  /// [NexusLinks.consumePending]).
+  final NexusDeepLinkHandler? onDeepLink;
 
   final bool remoteConfigEnabled;
 

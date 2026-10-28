@@ -16,6 +16,7 @@ class MethodChannelNexus extends NexusPlatform {
 
   void Function(String recordingId, List<Object?> events)? _replaySink;
   void Function(Map<String, dynamic> data)? _tapSink;
+  void Function(String url)? _linkSink;
 
   @override
   Future<String?> getPlatformVersion() =>
@@ -122,6 +123,35 @@ class MethodChannelNexus extends NexusPlatform {
       _tapSink = sink;
 
   @override
+  Future<List<String>> linksTakePending() async {
+    try {
+      final res = await methodChannel.invokeMethod<List<dynamic>>('linksTakePending');
+      return (res ?? const []).whereType<String>().toList();
+    } catch (_) {
+      return const []; // no native link capture on this platform
+    }
+  }
+
+  @override
+  void onLinkOpened(void Function(String url) sink) => _linkSink = sink;
+
+  @override
+  Future<void> linksConfigure(List<String> hosts) async {
+    try {
+      await methodChannel.invokeMethod('linksConfigure', {'hosts': hosts});
+    } catch (_) {}
+  }
+
+  @override
+  Future<String?> installReferrer() async {
+    try {
+      return await methodChannel.invokeMethod<String>('installReferrer');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
   Future<bool> showLiveActivity({
     required int id,
     required String channelId,
@@ -160,6 +190,23 @@ class MethodChannelNexus extends NexusPlatform {
     } catch (_) {}
   }
 
+  @override
+  Future<bool> showLiveActivityTemplate({required int id, required Map<String, dynamic> payload}) async {
+    try {
+      final ok = await methodChannel.invokeMethod<bool>('showLiveActivityTemplate', {'id': id, 'payload': jsonEncode(payload)});
+      return ok ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<void> liveActivityCacheImages(List<String> urls) async {
+    try {
+      await methodChannel.invokeMethod('liveActivityCacheImages', {'urls': urls});
+    } catch (_) {}
+  }
+
   void Function(Map<String, dynamic> info)? _laTokenSink;
 
   @override
@@ -168,6 +215,7 @@ class MethodChannelNexus extends NexusPlatform {
     required String activityType,
     required Map<String, dynamic> contentState,
     Map<String, dynamic>? attributes,
+    Map<String, dynamic>? template,
   }) async {
     try {
       await methodChannel.invokeMethod('liveActivityStart', {
@@ -175,6 +223,7 @@ class MethodChannelNexus extends NexusPlatform {
         'activityType': activityType,
         'contentState': contentState,
         'attributes': attributes,
+        'template': template,
       });
     } catch (_) {}
   }
@@ -206,6 +255,166 @@ class MethodChannelNexus extends NexusPlatform {
   @override
   void onLiveActivityToken(void Function(Map<String, dynamic> info) sink) => _laTokenSink = sink;
 
+  void Function(String action, String callId)? _callSink;
+  // A native call action can arrive during cold launch BEFORE the voice service
+  // wires its listener (the app was opened by answering). Buffer the latest so
+  // it is not lost — answering must never be dropped.
+  List<String>? _pendingCall;
+
+  @override
+  Future<void> voiceRegisterAccount() async {
+    try {
+      await methodChannel.invokeMethod('voiceRegisterAccount');
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> voiceReportIncoming({
+    required String callId,
+    required String from,
+    String? displayName,
+    String? avatarUrl,
+    bool hasVideo = false,
+  }) async {
+    try {
+      await methodChannel.invokeMethod('voiceReportIncoming', {
+        'callId': callId,
+        'from': from,
+        'displayName': displayName,
+        'avatarUrl': avatarUrl,
+        'hasVideo': hasVideo,
+      });
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> voiceEndCall(String callId) async {
+    try {
+      await methodChannel.invokeMethod('voiceEndCall', {'callId': callId});
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> voiceMissedCall({
+    required String callId,
+    required String from,
+    String? displayName,
+    String? avatarUrl,
+  }) async {
+    try {
+      await methodChannel.invokeMethod('voiceMissedCall', {
+        'callId': callId,
+        'from': from,
+        'displayName': displayName,
+        'avatarUrl': avatarUrl,
+      });
+    } catch (_) {}
+  }
+
+  @override
+  void onNativeCallEvent(void Function(String action, String callId) sink) {
+    _callSink = sink;
+    final p = _pendingCall;
+    if (p != null) {
+      _pendingCall = null;
+      sink(p[0], p[1]);
+    }
+  }
+
+  @override
+  Future<void> voiceReportOutgoing({
+    required String callId,
+    required String to,
+    String? displayName,
+  }) async {
+    try {
+      await methodChannel.invokeMethod('voiceReportOutgoing', {
+        'callId': callId,
+        'to': to,
+        'displayName': displayName,
+      });
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> voiceReportConnected(String callId) async {
+    try {
+      await methodChannel.invokeMethod('voiceReportConnected', {'callId': callId});
+    } catch (_) {}
+  }
+
+  @override
+  Future<String?> voiceVoipToken() async {
+    try {
+      return await methodChannel.invokeMethod<String>('voiceVoipToken');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void Function(String action, String callId, Object? value)? _callControlSink;
+  void Function(bool active)? _audioSessionSink;
+  void Function(Map<String, dynamic> data)? _voicePushSink;
+  void Function(String token)? _voipTokenSink;
+  // A VoIP push can ring (and the user can answer) during a cold launch, before
+  // the voice service attaches — buffer the latest so nothing is dropped.
+  Map<String, dynamic>? _pendingVoicePush;
+  String? _pendingVoipToken;
+
+  @override
+  void onNativeCallControl(void Function(String action, String callId, Object? value) sink) =>
+      _callControlSink = sink;
+
+  @override
+  void onNativeCallAudioSession(void Function(bool active) sink) => _audioSessionSink = sink;
+
+  @override
+  void onNativeVoicePush(void Function(Map<String, dynamic> data) sink) {
+    _voicePushSink = sink;
+    final p = _pendingVoicePush;
+    if (p != null) {
+      _pendingVoicePush = null;
+      sink(p);
+    }
+  }
+
+  @override
+  void onNativeVoipToken(void Function(String token) sink) {
+    _voipTokenSink = sink;
+    final t = _pendingVoipToken;
+    if (t != null) {
+      _pendingVoipToken = null;
+      sink(t);
+    }
+  }
+
+  @override
+  Future<bool> appIsForeground() async {
+    try {
+      return await methodChannel.invokeMethod<bool>('appIsForeground') ?? true;
+    } catch (_) {
+      return true; // unimplemented on this platform — assume foreground
+    }
+  }
+
+  @override
+  Future<String?> micPermissionStatus() async {
+    try {
+      return await methodChannel.invokeMethod<String>('micPermissionStatus');
+    } catch (_) {
+      return null; // unimplemented — caller falls back to permission_handler
+    }
+  }
+
+  @override
+  Future<bool?> micRequestPermission() async {
+    try {
+      return await methodChannel.invokeMethod<bool>('micRequestPermission');
+    } catch (_) {
+      return null; // unimplemented — caller falls back to permission_handler
+    }
+  }
+
   Future<dynamic> _handleNative(MethodCall call) async {
     if (call.method == 'onReplayBatch') {
       final args = (call.arguments as Map);
@@ -215,8 +424,52 @@ class MethodChannelNexus extends NexusPlatform {
       );
     } else if (call.method == 'onNotificationTap') {
       _tapSink?.call(_decode(call.arguments));
+    } else if (call.method == 'onLinkOpened') {
+      final url = call.arguments;
+      if (url is String) _linkSink?.call(url);
     } else if (call.method == 'onLiveActivityToken') {
       _laTokenSink?.call(_decode(call.arguments));
+    } else if (call.method == 'onCallAnswer' || call.method == 'onCallReject' || call.method == 'onCallDisconnect') {
+      final args = _decode(call.arguments);
+      final action = call.method == 'onCallAnswer'
+          ? 'answer'
+          : call.method == 'onCallReject'
+              ? 'reject'
+              : 'disconnect';
+      final callId = (args['callId'] as String?) ?? '';
+      if (_callSink != null) {
+        _callSink!.call(action, callId);
+      } else {
+        _pendingCall = [action, callId]; // replay when the listener attaches
+      }
+    } else if (call.method == 'onCallMute' || call.method == 'onCallHold' || call.method == 'onCallDtmf') {
+      // In-call controls driven from the iOS system call UI (CallKit).
+      final args = _decode(call.arguments);
+      final action = call.method == 'onCallMute'
+          ? 'mute'
+          : call.method == 'onCallHold'
+              ? 'hold'
+              : 'dtmf';
+      _callControlSink?.call(action, (args['callId'] as String?) ?? '', args['value']);
+    } else if (call.method == 'onCallAudioSession') {
+      final args = _decode(call.arguments);
+      _audioSessionSink?.call(args['active'] == true);
+    } else if (call.method == 'onVoicePush') {
+      final args = _decode(call.arguments);
+      if (_voicePushSink != null) {
+        _voicePushSink!.call(args);
+      } else {
+        _pendingVoicePush = args; // replay when the voice service attaches
+      }
+    } else if (call.method == 'onVoipToken') {
+      final args = _decode(call.arguments);
+      final token = (args['token'] as String?) ?? '';
+      if (token.isEmpty) return null;
+      if (_voipTokenSink != null) {
+        _voipTokenSink!.call(token);
+      } else {
+        _pendingVoipToken = token;
+      }
     }
     return null;
   }
@@ -231,4 +484,50 @@ class MethodChannelNexus extends NexusPlatform {
     } catch (_) {}
     return const {};
   }
+
+  // ---- Nexus Shield ------------------------------------------------------------
+
+  @override
+  Future<Map<String, Object?>?> shieldEnsureKey(String alias, {Uint8List? attestationChallenge}) async {
+    final r = await methodChannel.invokeMethod<Map<Object?, Object?>>('shieldEnsureKey', {
+      'alias': alias,
+      'attestationChallenge': ?attestationChallenge,
+    });
+    return r?.map((k, v) => MapEntry(k.toString(), v));
+  }
+
+  @override
+  Future<Uint8List?> shieldSign(String alias, Uint8List data) =>
+      methodChannel.invokeMethod<Uint8List>('shieldSign', {'alias': alias, 'data': data});
+
+  @override
+  Future<void> shieldDeleteKey(String alias) => methodChannel.invokeMethod<void>('shieldDeleteKey', {'alias': alias});
+
+  @override
+  Future<String?> shieldPlayIntegrity(String cloudProjectNumber, String requestHash) =>
+      methodChannel.invokeMethod<String>('shieldPlayIntegrity', {
+        'cloudProjectNumber': cloudProjectNumber,
+        'requestHash': requestHash,
+      });
+
+  @override
+  Future<bool> shieldAppAttestSupported() async {
+    try {
+      return await methodChannel.invokeMethod<bool>('shieldAppAttestSupported') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<Map<String, Object?>?> shieldAppAttest(Uint8List clientDataHash, {bool forceAttest = false}) async {
+    final r = await methodChannel.invokeMethod<Map<Object?, Object?>>('shieldAppAttest', {
+      'clientDataHash': clientDataHash,
+      'forceAttest': forceAttest,
+    });
+    return r?.map((k, v) => MapEntry(k.toString(), v));
+  }
+
+  @override
+  Future<void> shieldAppAttestReset() => methodChannel.invokeMethod<void>('shieldAppAttestReset');
 }

@@ -16,6 +16,48 @@ class NexusHttp {
   final NexusIdentity _identity;
   final http.Client _client;
 
+  /// Adds Shield headers to Nexus's own requests when the app opted in
+  /// ([NexusConfig.shieldProtectNexus]). Never applied to `/partner/shield/*`.
+  Future<Map<String, String>> Function(String method, Uri url, List<int> body)? signer;
+
+  Future<Map<String, String>> _sign(Uri uri, String path, List<int> body) async {
+    final s = signer;
+    if (s == null || path.startsWith('/partner/shield')) return const {};
+    try {
+      return await s('POST', uri, body);
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  /// Like [post] but returns the status and decoded body for ANY response, so
+  /// callers that need the server's error code can read it. Null only when the
+  /// request itself failed (network, timeout).
+  Future<({int status, Map<String, dynamic>? body})?> postRaw(
+    String path,
+    Map<String, Object?> body, {
+    Map<String, String>? extraHeaders,
+  }) async {
+    final uri = Uri.parse('${_config.httpBase}$path');
+    NexusLog.debug('→ POST $path');
+    try {
+      final res = await _client
+          .post(uri, headers: {..._headers, ...?extraHeaders}, body: jsonEncode(body))
+          .timeout(const Duration(seconds: 30));
+      NexusLog.debug('← ${res.statusCode} POST $path');
+      Map<String, dynamic>? decoded;
+      try {
+        final d = res.body.isEmpty ? null : jsonDecode(res.body);
+        decoded = d is Map<String, dynamic> ? d : null;
+      } catch (_) {}
+      if (res.statusCode >= 400) NexusLog.warn('← ${res.statusCode} POST $path — ${_summarize(res.body)}');
+      return (status: res.statusCode, body: decoded);
+    } catch (e, st) {
+      NexusLog.error('POST $path failed', e, st);
+      return null;
+    }
+  }
+
   Map<String, String> get _headers {
     final os = _identity.deviceContext['osType'];
     final osVersion = _identity.deviceContext['osVersion'];
@@ -40,11 +82,12 @@ class NexusHttp {
     final sw = Stopwatch()..start();
     NexusLog.debug('→ POST $path');
     try {
+      final encoded = utf8.encode(jsonEncode(body));
       final res = await _client
           .post(
             uri,
-            headers: {..._headers, ...?extraHeaders},
-            body: jsonEncode(body),
+            headers: {..._headers, ...await _sign(uri, path, encoded), ...?extraHeaders},
+            body: encoded,
           )
           .timeout(const Duration(seconds: 20));
       final ms = sw.elapsedMilliseconds;

@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -27,6 +28,11 @@ import io.flutter.plugin.common.PluginRegistry
 import net.inverge.nexus.core.NexusCrashReporter
 import net.inverge.nexus.core.NexusNdk
 import net.inverge.nexus.core.NexusReplayRecorder
+import net.inverge.nexus.links.NexusLinkActivity
+import net.inverge.nexus.liveactivity.NexusLiveUpdate
+import net.inverge.nexus.shield.NexusShield
+import com.android.installreferrer.api.InstallReferrerClient
+import com.android.installreferrer.api.InstallReferrerStateListener
 
 /**
  * Flutter <-> Android bridge. Device/app context is served here; session-replay
@@ -50,6 +56,14 @@ class NexusPlugin :
     private var ndk: NexusNdk? = null
     private var activityBinding: ActivityPluginBinding? = null
     private val io = Executors.newSingleThreadExecutor() // notification image downloads
+    // Keystore key generation (StrongBox especially) can take a second or more:
+    // never on the platform thread.
+    private val shieldIo = Executors.newSingleThreadExecutor()
+    private val shield: NexusShield? by lazy { appContext?.let { NexusShield(it) } }
+
+    // Deep links seen before Dart asked for them (cold start), then live.
+    private val pendingLinks = ArrayList<String>()
+    private var linksLive = false
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(binding.binaryMessenger, "nexus")
@@ -66,6 +80,63 @@ class NexusPlugin :
                 )
             }
         }
+        // Bridge native Telecom call events (answer/reject/disconnect handled in
+        // the ConnectionService WITHOUT opening the app) up to the Dart voice
+        // layer when the UI engine is alive.
+        net.inverge.nexus.voice.NexusVoiceManager.events =
+            object : net.inverge.nexus.voice.NexusCallEvents {
+                override fun onAnswer(callId: String) = emitCall("onCallAnswer", callId)
+                override fun onReject(callId: String) = emitCall("onCallReject", callId)
+                override fun onDisconnect(callId: String) = emitCall("onCallDisconnect", callId)
+            }
+    }
+
+    /** Nexus Shield — hardware key + Play Integrity. Results always hop back to main. */
+    private fun handleShield(call: MethodCall, result: Result) {
+        val s = shield ?: return result.error("shield_unavailable", "no context", null)
+        val alias = call.argument<String>("alias") ?: "nexus_shield"
+        fun ok(v: Any?) = main.post { result.success(v) }
+        fun fail(code: String, e: Throwable) = main.post { result.error(code, e.message ?: e.javaClass.simpleName, null) }
+        when (call.method) {
+            "shieldEnsureKey" -> shieldIo.execute {
+                try {
+                    ok(s.ensureKey(alias, call.argument<ByteArray>("attestationChallenge")))
+                } catch (e: Throwable) {
+                    fail("shield_key", e)
+                }
+            }
+            "shieldSign" -> shieldIo.execute {
+                try {
+                    ok(s.sign(alias, call.argument<ByteArray>("data") ?: ByteArray(0)))
+                } catch (e: Throwable) {
+                    fail("shield_sign", e)
+                }
+            }
+            "shieldDeleteKey" -> shieldIo.execute {
+                try {
+                    s.deleteKey(alias)
+                    ok(null)
+                } catch (e: Throwable) {
+                    fail("shield_key", e)
+                }
+            }
+            "shieldPlayIntegrity" -> {
+                val project = call.argument<String>("cloudProjectNumber")?.toLongOrNull()
+                    ?: return result.error("shield_play", "cloudProjectNumber missing", null)
+                val hash = call.argument<String>("requestHash") ?: ""
+                try {
+                    s.playIntegrity(project, hash) { token, err ->
+                        main.post { if (token != null) result.success(token) else result.error("shield_play", err, null) }
+                    }
+                } catch (e: Throwable) {
+                    result.error("shield_play", e.message, null)
+                }
+            }
+        }
+    }
+
+    private fun emitCall(method: String, callId: String) {
+        main.post { channel.invokeMethod(method, mapOf("callId" to callId)) }
     }
 
     override fun onMethodCall(call: MethodCall, result: Result) {
@@ -93,8 +164,60 @@ class NexusPlugin :
                 ndk?.takePending()?.let { all.addAll(it) }
                 result.success(all)
             }
+            "voiceRegisterAccount" -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    appContext?.let { net.inverge.nexus.voice.NexusVoiceManager.registerPhoneAccount(it) }
+                }
+                result.success(null)
+            }
+            "voiceReportIncoming" -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    appContext?.let {
+                        net.inverge.nexus.voice.NexusVoiceManager.reportIncomingCall(
+                            it,
+                            call.argument<String>("callId") ?: "",
+                            call.argument<String>("from") ?: "",
+                            call.argument<String>("displayName"),
+                            call.argument<String>("avatarUrl"),
+                            call.argument<Boolean>("hasVideo") ?: false,
+                        )
+                    }
+                }
+                result.success(null)
+            }
+            "voiceEndCall" -> {
+                call.argument<String>("callId")?.let {
+                    net.inverge.nexus.voice.NexusVoiceManager.endCall(it)
+                }
+                result.success(null)
+            }
+            "voiceMissedCall" -> {
+                appContext?.let { ctx ->
+                    call.argument<String>("callId")?.let {
+                        net.inverge.nexus.voice.NexusVoiceManager.missedCall(
+                            ctx, it, call.argument<String>("from") ?: "", call.argument<String>("displayName"),
+                            call.argument<String>("avatarUrl"),
+                        )
+                    }
+                }
+                result.success(null)
+            }
+            "linksTakePending" -> {
+                result.success(ArrayList(pendingLinks))
+                pendingLinks.clear()
+                linksLive = true
+            }
+            "linksConfigure" -> {
+                val hosts = call.argument<List<String>>("hosts") ?: emptyList()
+                appContext?.getSharedPreferences(LINK_PREFS, Context.MODE_PRIVATE)?.edit()
+                    ?.putStringSet(LINK_HOSTS, hosts.map { it.lowercase() }.toSet())?.apply()
+                result.success(null)
+            }
+            "installReferrer" -> installReferrer(result)
+            "shieldEnsureKey", "shieldSign", "shieldDeleteKey", "shieldPlayIntegrity" -> handleShield(call, result)
             "showNotification" -> showNotification(call, result)
             "showLiveActivity" -> showLiveActivity(call, result)
+            "showLiveActivityTemplate" -> showLiveActivityTemplate(call, result)
             "endLiveActivity" -> {
                 val id = call.argument<Int>("id")
                 if (id != null) {
@@ -248,6 +371,21 @@ class NexusPlugin :
         }
     }
 
+    /** Render a Nexus Live Activity template (Android 16 Live Update / progress fallback). */
+    private fun showLiveActivityTemplate(call: MethodCall, result: Result) {
+        val ctx = appContext ?: return result.success(false)
+        val id = call.argument<Int>("id") ?: return result.success(false)
+        val payload = call.argument<String>("payload") ?: return result.success(false)
+        io.execute {
+            val ok = try {
+                NexusLiveUpdate.show(ctx, id, payload, resolveSmallIcon(ctx, null), activityIntent(ctx, id, payload, null, null)) { bitmapFromUrl(it) }
+            } catch (_: Throwable) {
+                false
+            }
+            main.post { result.success(ok) }
+        }
+    }
+
     /** A PendingIntent that relaunches the app with the payload (+ optional action). */
     private fun activityIntent(ctx: Context, requestCode: Int, payload: String?, actionId: String?, url: String?): PendingIntent? {
         val launch = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName)?.apply {
@@ -261,10 +399,31 @@ class NexusPlugin :
         return PendingIntent.getActivity(ctx, requestCode, launch, flags)
     }
 
+    /**
+     * The small icon, in the order FCM itself resolves one: the campaign's own
+     * drawable, then the app's `default_notification_icon` manifest meta-data,
+     * then the conventional `ic_stat_notification`/`ic_notification` drawable.
+     * The launcher icon is the last resort only — Android masks a small icon by
+     * its alpha channel, so a full-colour launcher icon draws as a blank square.
+     */
     private fun resolveSmallIcon(ctx: Context, name: String?): Int {
-        val byName = resolveDrawable(ctx, name)
-        if (byName != 0) return byName
+        resolveDrawable(ctx, name).let { if (it != 0) return it }
+        manifestNotificationIcon(ctx).let { if (it != 0) return it }
+        for (conventional in arrayOf("ic_stat_notification", "ic_notification")) {
+            resolveDrawable(ctx, conventional).let { if (it != 0) return it }
+        }
         return if (ctx.applicationInfo.icon != 0) ctx.applicationInfo.icon else android.R.drawable.ic_dialog_info
+    }
+
+    /** `com.google.firebase.messaging.default_notification_icon` from the manifest, or 0. */
+    private fun manifestNotificationIcon(ctx: Context): Int = try {
+        ctx.packageManager
+            .getApplicationInfo(ctx.packageName, PackageManager.GET_META_DATA)
+            .metaData
+            ?.getInt("com.google.firebase.messaging.default_notification_icon", 0)
+            ?: 0
+    } catch (_: Throwable) {
+        0
     }
 
     private fun resolveDrawable(ctx: Context, name: String?): Int {
@@ -285,7 +444,85 @@ class NexusPlugin :
         }
     }
 
+    /**
+     * Capture a deep link from an activity intent for the Dart links service.
+     *
+     * Runs BEFORE Flutter reads the intent (plugins are attached in onAttach,
+     * ahead of the initial route; on onNewIntent plugins are told first), so a
+     * Nexus SHORT link can be consumed here — data cleared — and the app's router
+     * never receives `/l/<slug>`, a path it has no route for. Any other link is
+     * left for the router and only reported.
+     */
+    private fun captureLink(intent: Intent?) {
+        if (intent == null) return
+        intent.getStringExtra(NexusLinkActivity.EXTRA_LINK)?.let { url ->
+            intent.removeExtra(NexusLinkActivity.EXTRA_LINK)
+            deliverLink(url)
+            return
+        }
+        if (intent.action != Intent.ACTION_VIEW) return
+        val data = intent.data ?: return
+        // A config-change re-attach replays the same intent — report it once.
+        if (intent.getBooleanExtra(EXTRA_LINK_SEEN, false)) return
+        intent.putExtra(EXTRA_LINK_SEEN, true)
+        val url = data.toString()
+        if (isShortLink(data)) intent.data = null
+        deliverLink(url)
+    }
+
+    private fun deliverLink(url: String) {
+        if (linksLive) {
+            main.post { channel.invokeMethod("onLinkOpened", url) }
+        } else {
+            pendingLinks.add(url)
+        }
+    }
+
+    /** `/l/<slug>` or `/a/<appId>/<slug>` on a Nexus link host. */
+    private fun isShortLink(uri: android.net.Uri): Boolean {
+        val host = uri.host?.lowercase() ?: return false
+        val hosts = appContext?.getSharedPreferences(LINK_PREFS, Context.MODE_PRIVATE)
+            ?.getStringSet(LINK_HOSTS, null) ?: emptySet()
+        if (host != DEFAULT_LINK_HOST && host !in hosts) return false
+        val s = uri.pathSegments.filter { it.isNotEmpty() }
+        return (s.size == 2 && s[0] == "l") || (s.size == 3 && s[0] == "a")
+    }
+
+    /** Google Play's install referrer string, or null (not from Play / unavailable). */
+    private fun installReferrer(result: Result) {
+        val ctx = appContext ?: return result.success(null)
+        val client = try {
+            InstallReferrerClient.newBuilder(ctx).build()
+        } catch (_: Throwable) {
+            return result.success(null)
+        }
+        var answered = false
+        fun answer(value: String?) {
+            if (answered) return
+            answered = true
+            main.post { result.success(value) }
+            try { client.endConnection() } catch (_: Throwable) {}
+        }
+        try {
+            client.startConnection(object : InstallReferrerStateListener {
+                override fun onInstallReferrerSetupFinished(code: Int) {
+                    if (code == InstallReferrerClient.InstallReferrerResponse.OK) {
+                        answer(try { client.installReferrer.installReferrer } catch (_: Throwable) { null })
+                    } else {
+                        answer(null)
+                    }
+                }
+
+                override fun onInstallReferrerServiceDisconnected() = answer(null)
+            })
+        } catch (_: Throwable) {
+            answer(null)
+        }
+    }
+
     override fun onNewIntent(intent: Intent): Boolean {
+        captureLink(intent)
+        maybeForwardAnswer(intent)
         val payload = intent.getStringExtra(EXTRA_PAYLOAD)
         val actionId = intent.getStringExtra(EXTRA_ACTION_ID)
         if (payload == null && actionId == null) return false
@@ -308,6 +545,20 @@ class NexusPlugin :
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activityBinding = binding
         binding.addOnNewIntentListener(this)
+        // Launched from a deep link (cold start) — capture it before Flutter
+        // reads the intent for its initial route.
+        captureLink(binding.activity.intent)
+        // The app may have been launched by answering a native call — forward it.
+        maybeForwardAnswer(binding.activity.intent)
+    }
+
+    /** If this intent carries a native "answer this call" request, tell Dart to
+     *  answer it in the main engine (the proven media path). Consumes the extra. */
+    private fun maybeForwardAnswer(intent: Intent?) {
+        val callId = intent?.getStringExtra(net.inverge.nexus.voice.NexusVoiceManager.EXTRA_ANSWER_CALL_ID)
+            ?: return
+        intent.removeExtra(net.inverge.nexus.voice.NexusVoiceManager.EXTRA_ANSWER_CALL_ID)
+        main.post { channel.invokeMethod("onCallAnswer", mapOf("callId" to callId)) }
     }
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) =
@@ -332,6 +583,7 @@ class NexusPlugin :
         try {
             val pm = ctx.packageManager
             val pkg = ctx.packageName
+            info["appId"] = pkg
             @Suppress("DEPRECATION")
             val pInfo = pm.getPackageInfo(pkg, 0)
             info["installTime"] = pInfo.firstInstallTime // epoch ms
@@ -360,5 +612,9 @@ class NexusPlugin :
         const val EXTRA_PAYLOAD = "net.inverge.nexus.NOTIFICATION_PAYLOAD"
         const val EXTRA_ACTION_ID = "net.inverge.nexus.NOTIFICATION_ACTION_ID"
         const val EXTRA_ACTION_URL = "net.inverge.nexus.NOTIFICATION_ACTION_URL"
+        const val EXTRA_LINK_SEEN = "net.inverge.nexus.LINK_SEEN"
+        const val LINK_PREFS = "nexus_links"
+        const val LINK_HOSTS = "hosts"
+        const val DEFAULT_LINK_HOST = "services.inverge.net"
     }
 }

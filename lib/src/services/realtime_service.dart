@@ -17,8 +17,13 @@ class NexusRealtime {
   final NexusIdentity _id;
   io.Socket? _socket;
   final Set<String> _rooms = {};
+  final Map<String, NexusEventHandler> _handlers = {};
 
   bool get isConnected => _socket?.connected ?? false;
+
+  /// Whether a socket exists (connected, or connecting/reconnecting) — i.e. the
+  /// app wants realtime up, even if the link is momentarily down.
+  bool get isActive => _socket != null;
 
   /// Open the connection (idempotent). Rooms are re-joined after a reconnect.
   void connect() {
@@ -40,12 +45,15 @@ class NexusRealtime {
           .setExtraHeaders({'x-api-key': _cfg.apiKey})
           .build(),
     );
+    // Register any handlers added before the socket existed; they persist across
+    // this socket's reconnects.
+    _handlers.forEach((event, handler) => socket.on(event, handler));
     socket.onConnect((_) {
       NexusLog.info('realtime connected (${socket.id})');
       for (final r in _rooms) {
         NexusLog.debug('realtime re-joining "$r" after (re)connect');
         socket.emitWithAck('room.join', {
-          'room': r,
+          'name': r,
         }, ack: (dynamic res) => NexusLog.debug('realtime join "$r" ← $res'));
       }
     });
@@ -77,8 +85,8 @@ class NexusRealtime {
     final events = event is List ? event : [event];
     NexusLog.debug('realtime emit $events → "$room"');
     return _ackEmit('room.emit', {
-      'room': room,
-      'events': events,
+      'name': room,
+      'event': events,
       'payload': payload,
     }, label: 'emit $events → "$room"');
   }
@@ -112,12 +120,19 @@ class NexusRealtime {
     return completer.future;
   }
 
-  /// Listen for a server event.
-  void on(String event, NexusEventHandler handler) =>
-      _socket?.on(event, handler);
+  /// Listen for a server event. Persisted, so it survives (re)connects and works
+  /// even if called before the socket is open.
+  void on(String event, NexusEventHandler handler) {
+    _handlers[event] = handler;
+    _socket?.off(event); // one handler per event, matching [_handlers]
+    _socket?.on(event, handler);
+  }
 
   /// Stop listening for a server event.
-  void off(String event) => _socket?.off(event);
+  void off(String event) {
+    _handlers.remove(event);
+    _socket?.off(event);
+  }
 
   void disconnect() {
     _socket?.dispose();

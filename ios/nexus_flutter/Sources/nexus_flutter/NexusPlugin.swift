@@ -1,14 +1,23 @@
+import AVFoundation
 import Flutter
 import UIKit
 
 /**
  Flutter <-> iOS bridge. Serves device/app context; session-replay capture is
  delegated to the native core recorder (`NexusReplayRecorder`), which pushes
- rrweb-compatible event batches back up over the `onReplayBatch` channel.
+ rrweb-compatible event batches back up over the `onReplayBatch` channel; and
+ native calling is delegated to `NexusVoiceManager` (CallKit + PushKit), the
+ twin of Android's `NexusVoiceManager` + ConnectionService stack.
  */
 public class NexusPlugin: NSObject, FlutterPlugin {
   private var channel: FlutterMethodChannel?
   private var recorder: NexusReplayRecorder?
+
+  // Deep links seen before Dart asked for them (cold start), then live.
+  private var pendingLinks: [String] = []
+  private var linksLive = false
+  private static let linkHostsKey = "nexus_links_hosts"
+  private static let defaultLinkHost = "services.inverge.net"
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "nexus", binaryMessenger: registrar.messenger())
@@ -20,6 +29,23 @@ public class NexusPlugin: NSObject, FlutterPlugin {
       }
     }
     registrar.addMethodCallDelegate(instance, channel: channel)
+    // Deep links: see every URL that opens the app (custom scheme + Universal
+    // Links), under both the app-delegate and the UIScene lifecycles.
+    registrar.addApplicationDelegate(instance)
+    registrar.addSceneDelegate(instance)
+
+    // Native call events (answer / reject / disconnect / audio session / VoIP
+    // push) -> Dart, mirroring the Android plugin's `NexusCallEvents` bridge.
+    NexusVoiceManager.shared.onEvent = { [weak channel] name, args in
+      DispatchQueue.main.async { channel?.invokeMethod(name, arguments: args) }
+    }
+    // PushKit must be live from LAUNCH: when a VoIP push wakes a killed app, the
+    // registry has to exist before iOS delivers it. Plugin registration runs in
+    // `didFinishLaunching`, which is the earliest hook a plugin gets. Apps that
+    // don't declare the `voip` background mode are skipped inside.
+    if NexusVoiceManager.hasVoipBackgroundMode {
+      NexusVoiceManager.shared.registerAccount()
+    }
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -41,8 +67,78 @@ public class NexusPlugin: NSObject, FlutterPlugin {
       result(nil)
     case "takePendingCrashes":
       result(NexusCrashReporter.shared.takePending())
-    case "liveActivityStart", "liveActivityUpdate", "liveActivityEnd", "liveActivityObservePushToStart":
+    case "liveActivityStart", "liveActivityUpdate", "liveActivityEnd", "liveActivityObservePushToStart", "liveActivityCacheImages":
       handleLiveActivity(call, result)
+    case "voiceRegisterAccount", "voiceReportIncoming", "voiceEndCall", "voiceMissedCall",
+         "voiceReportOutgoing", "voiceReportConnected", "voiceVoipToken":
+      handleVoice(call, result)
+    case "appIsForeground":
+      // Authoritative: a VoIP push launches the app in the BACKGROUND, where no
+      // permission dialog can ever be presented.
+      onMain { result(UIApplication.shared.applicationState != .background) }
+    case "micPermissionStatus":
+      result(Self.micPermissionStatus())
+    case "micRequestPermission":
+      requestMicrophoneAccess(result)
+    case "linksTakePending":
+      result(pendingLinks)
+      pendingLinks.removeAll()
+      linksLive = true
+    case "linksConfigure":
+      let hosts = (call.arguments as? [String: Any])?["hosts"] as? [String] ?? []
+      UserDefaults.standard.set(hosts.map { $0.lowercased() }, forKey: Self.linkHostsKey)
+      result(nil)
+    case "installReferrer":
+      result(nil) // Apple has no install referrer; installs match server-side.
+    case "shieldEnsureKey", "shieldSign", "shieldDeleteKey", "shieldAppAttestSupported", "shieldAppAttest", "shieldAppAttestReset":
+      NexusShield.handle(call, result)
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  /// Native calling — the iOS side of the SAME method-channel contract Android
+  /// implements, so the Dart voice service drives both platforms identically.
+  private func handleVoice(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
+    let args = call.arguments as? [String: Any] ?? [:]
+    let voice = NexusVoiceManager.shared
+    switch call.method {
+    case "voiceRegisterAccount":
+      voice.registerAccount()
+      // Dart has wired its listeners — release anything buffered during a
+      // cold launch (e.g. the user answered before the engine was up).
+      voice.markDartReady()
+      result(nil)
+    case "voiceReportIncoming":
+      voice.reportIncoming(
+        callId: args["callId"] as? String ?? "",
+        from: args["from"] as? String ?? "",
+        displayName: args["displayName"] as? String,
+        hasVideo: args["hasVideo"] as? Bool ?? false
+      )
+      result(nil)
+    case "voiceEndCall":
+      voice.endCall(args["callId"] as? String ?? "")
+      result(nil)
+    case "voiceMissedCall":
+      voice.missedCall(
+        callId: args["callId"] as? String ?? "",
+        from: args["from"] as? String ?? "",
+        displayName: args["displayName"] as? String
+      )
+      result(nil)
+    case "voiceReportOutgoing":
+      voice.reportOutgoing(
+        callId: args["callId"] as? String ?? "",
+        to: args["to"] as? String ?? "",
+        displayName: args["displayName"] as? String
+      )
+      result(nil)
+    case "voiceReportConnected":
+      voice.reportConnected(args["callId"] as? String ?? "")
+      result(nil)
+    case "voiceVoipToken":
+      result(voice.voipToken)
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -52,9 +148,7 @@ public class NexusPlugin: NSObject, FlutterPlugin {
     #if os(iOS)
       if #available(iOS 16.1, *) {
         let mgr = NexusLiveActivityManager.shared
-        mgr.onToken = { [weak channel] info in
-          DispatchQueue.main.async { channel?.invokeMethod("onLiveActivityToken", arguments: info) }
-        }
+        mgr.onToken = { [weak channel] info in channel?.invokeMethod("onLiveActivityToken", arguments: info) }
         let args = call.arguments as? [String: Any] ?? [:]
         switch call.method {
         case "liveActivityStart":
@@ -62,14 +156,16 @@ public class NexusPlugin: NSObject, FlutterPlugin {
             activityId: args["activityId"] as? String ?? "",
             activityType: args["activityType"] as? String ?? "",
             contentState: args["contentState"] as? [String: Any],
-            attributes: args["attributes"] as? [String: Any]
+            template: (args["template"] ?? args["attributes"]) as? [String: Any]
           )
         case "liveActivityUpdate":
           mgr.update(activityId: args["activityId"] as? String ?? "", contentState: args["contentState"] as? [String: Any])
         case "liveActivityEnd":
           mgr.end(activityId: args["activityId"] as? String ?? "", contentState: args["contentState"] as? [String: Any])
         case "liveActivityObservePushToStart":
-          mgr.observePushToStart(activityType: args["activityType"] as? String ?? "")
+          mgr.observe()
+        case "liveActivityCacheImages":
+          mgr.cacheImages(args["urls"] as? [String] ?? [])
         default: break
         }
         result(nil)
@@ -79,12 +175,69 @@ public class NexusPlugin: NSObject, FlutterPlugin {
     result(nil) // Live Activities unavailable — no-op
   }
 
+  /// The REAL microphone authorization, which `permission_handler` cannot express:
+  /// it maps `.notDetermined` to "denied", and reports `permanentlyDenied` for any
+  /// request that returns false — including a request made from the background,
+  /// where iOS shows no dialog and refuses by default without recording a denial.
+  /// Telling "never asked" apart from "refused" is the difference between
+  /// prompting at the next opportunity and wrongly giving up forever.
+  private static func micPermissionStatus() -> String {
+    // A missing NSMicrophoneUsageDescription is FATAL, not merely restrictive:
+    // `authorizationStatus` still reports `.notDetermined` and `requestAccess`
+    // quietly returns false, but the first REAL microphone access (the WebRTC
+    // audio engine opening its input) aborts the process through TCC
+    // (__TCC_CRASHING_DUE_TO_PRIVACY_VIOLATION__). Report it so the SDK can keep
+    // the mic shut instead of taking the app down with it.
+    if Bundle.main.object(forInfoDictionaryKey: "NSMicrophoneUsageDescription") == nil {
+      return "missing_usage_description"
+    }
+    switch AVCaptureDevice.authorizationStatus(for: .audio) {
+    case .authorized: return "granted"
+    case .denied: return "denied"
+    case .restricted: return "restricted"
+    case .notDetermined: return "undetermined"
+    @unknown default: return "undetermined"
+    }
+  }
+
+  /// Ask iOS for the microphone, through the OS API itself.
+  ///
+  /// Deliberately NOT delegated to a permission package: on iOS those report
+  /// "never asked" as denied, report a failed request as a PERMANENT denial, and
+  /// can be compiled out entirely by a Podfile flag — in which case they answer
+  /// "denied" without the OS ever being asked, and the permission never even
+  /// appears in Settings. A calling SDK cannot afford that ambiguity.
+  ///
+  /// Refuses to ask when it would be pointless or harmful: with no usage
+  /// description the request is what kills the app, and in the background iOS
+  /// cannot present the dialog and refuses instantly.
+  private func requestMicrophoneAccess(_ result: @escaping FlutterResult) {
+    let status = Self.micPermissionStatus()
+    if status == "granted" { result(true); return }
+    if status != "undetermined" { result(false); return }
+    onMain {
+      guard UIApplication.shared.applicationState != .background else {
+        NSLog("[NexusVoice] microphone request skipped — the app is in the background, where iOS shows no dialog.")
+        result(false)
+        return
+      }
+      AVCaptureDevice.requestAccess(for: .audio) { granted in
+        DispatchQueue.main.async { result(granted) }
+      }
+    }
+  }
+
+  private func onMain(_ work: @escaping () -> Void) {
+    if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
+  }
+
   private func deviceInfo() -> [String: Any] {
     var info: [String: Any] = [
       "osType": "ios",
       "osVersion": UIDevice.current.systemVersion,
       "deviceModel": UIDevice.current.model,
       "deviceKey": UIDevice.current.identifierForVendor?.uuidString as Any,
+      "appId": Bundle.main.bundleIdentifier as Any,
     ]
     // iOS exposes no public install-date API — approximate: the app container's
     // creation date ~= install time; the executable's modification date ~= update.
@@ -100,5 +253,80 @@ public class NexusPlugin: NSObject, FlutterPlugin {
       info["updateTime"] = Int(modified.timeIntervalSince1970 * 1000)
     }
     return info
+  }
+}
+
+// MARK: - Deep links
+
+extension NexusPlugin: FlutterSceneLifeCycleDelegate {
+  /// Queue (cold start) or forward (live) a URL that opened the app, and report
+  /// whether it is a Nexus SHORT link the SDK consumes. Returning `true` from a
+  /// delegate stops Flutter routing it, so the app's router never receives
+  /// `/l/<slug>` — a path it has no route for. Every other URL is left to the
+  /// router and only reported.
+  @discardableResult
+  private func capture(_ url: URL) -> Bool {
+    let value = url.absoluteString
+    if linksLive {
+      DispatchQueue.main.async { [weak self] in self?.channel?.invokeMethod("onLinkOpened", arguments: value) }
+    } else {
+      pendingLinks.append(value)
+    }
+    return isShortLink(url)
+  }
+
+  /// `/l/<slug>` or `/a/<appId>/<slug>` on a Nexus link host.
+  private func isShortLink(_ url: URL) -> Bool {
+    guard let host = url.host?.lowercased() else { return false }
+    let saved = UserDefaults.standard.stringArray(forKey: Self.linkHostsKey) ?? []
+    guard host == Self.defaultLinkHost || saved.contains(host) else { return false }
+    let s = url.pathComponents.filter { $0 != "/" && !$0.isEmpty }
+    return (s.count == 2 && s[0] == "l") || (s.count == 3 && s[0] == "a")
+  }
+
+  private func webURL(_ activity: NSUserActivity) -> URL? {
+    activity.activityType == NSUserActivityTypeBrowsingWeb ? activity.webpageURL : nil
+  }
+
+  // App-delegate lifecycle (also the cold start: iOS calls these after launch).
+
+  public func application(
+    _ application: UIApplication,
+    open url: URL,
+    options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+  ) -> Bool {
+    capture(url)
+  }
+
+  public func application(
+    _ application: UIApplication,
+    continue userActivity: NSUserActivity,
+    restorationHandler: @escaping ([Any]) -> Void
+  ) -> Bool {
+    guard let url = webURL(userActivity) else { return false }
+    return capture(url)
+  }
+
+  // UIScene lifecycle.
+
+  public func scene(
+    _ scene: UIScene,
+    willConnectTo session: UISceneSession,
+    options connectionOptions: UIScene.ConnectionOptions?
+  ) -> Bool {
+    // Observe only. Returning true here would claim the WHOLE connection and
+    // hide its options from Flutter and every other plugin.
+    connectionOptions?.urlContexts.forEach { capture($0.url) }
+    connectionOptions?.userActivities.compactMap(webURL).forEach { capture($0) }
+    return false
+  }
+
+  public func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) -> Bool {
+    URLContexts.map { capture($0.url) }.contains(true)
+  }
+
+  public func scene(_ scene: UIScene, continue userActivity: NSUserActivity) -> Bool {
+    guard let url = webURL(userActivity) else { return false }
+    return capture(url)
   }
 }

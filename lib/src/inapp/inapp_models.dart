@@ -1,3 +1,5 @@
+import 'inapp_design.dart';
+
 /// Emitted when a user taps a button on an in-app message.
 class NexusInAppAction {
   const NexusInAppAction({
@@ -6,15 +8,23 @@ class NexusInAppAction {
     required this.action,
     this.url,
     this.event,
+    this.value,
+    this.variantId,
   });
 
   final String messageId;
+
+  /// The A/B variant the tap happened in, if any.
+  final String? variantId;
   final String buttonId;
 
-  /// `dismiss` | `url` | `event`.
+  /// `dismiss` | `url` | `event` | `copy`.
   final String action;
   final String? url;
   final String? event;
+
+  /// For `copy`: the text that was put on the clipboard.
+  final String? value;
 }
 
 /// A button on an in-app message.
@@ -26,15 +36,19 @@ class NexusInAppButton {
     this.url,
     this.event,
     this.style,
+    this.value,
   });
 
   final String id;
   final String text;
 
-  /// `dismiss` | `url` | `event`.
+  /// `dismiss` | `url` | `event` | `copy` (designed messages only).
   final String action;
   final String? url;
   final String? event;
+
+  /// For `copy`: the text to put on the clipboard.
+  final String? value;
 
   /// `primary` | `secondary` | `text`.
   final String? style;
@@ -64,11 +78,14 @@ class NexusInAppMessage {
     this.triggerEvent,
     this.maxDisplays,
     this.perSession = false,
+    this.design,
+    this.variantId,
+    this.isTest = false,
   });
 
   final String id;
 
-  /// `modal` | `banner_top` | `banner_bottom` | `center` | `fullscreen`.
+  /// `modal` | `bottom_sheet` | `banner_top` | `banner_bottom` | `center` | `fullscreen`.
   final String layout;
   final String? title;
   final String? body;
@@ -82,6 +99,17 @@ class NexusInAppMessage {
   final String? triggerEvent;
   final int? maxDisplays;
   final bool perSession;
+
+  /// The look designed in the console. Null for messages made before the
+  /// designer — those render from [title] / [body] / [imageUrl] / [buttons].
+  final NexusInAppDesign? design;
+
+  /// The A/B variant this user was assigned (null when the message has no test).
+  final String? variantId;
+
+  /// A "send test" from the console: shown at once, outside triggers and caps,
+  /// never reported.
+  final bool isTest;
 
   factory NexusInAppMessage.fromJson(Map<String, dynamic> j) {
     final content = (j['content'] as Map?)?.cast<String, dynamic>() ?? const {};
@@ -104,6 +132,9 @@ class NexusInAppMessage {
       triggerEvent: trigger?['event']?.toString(),
       maxDisplays: (j['maxDisplays'] as num?)?.toInt(),
       perSession: j['perSession'] == true,
+      design: NexusInAppDesign.tryParse(content['design']),
+      variantId: j['variantId']?.toString(),
+      isTest: j['test'] == true,
     );
   }
 }

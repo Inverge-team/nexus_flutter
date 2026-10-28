@@ -21,6 +21,12 @@ class NexusIdentity {
   /// Person properties supplied at identify time (email/name/traits).
   final Map<String, Object?> traits = {};
 
+  /// Contact details from the last [Nexus.identify] — kept so in-app messages
+  /// can be targeted and personalised (`{{first_name}}`) without a lookup.
+  String? email;
+  String? name;
+  String? phone;
+
   /// Best-effort device/platform context filled in from the native layer
   /// (osType, osVersion, deviceModel, appVersion, …). Kept whole for local use;
   /// use [wireContext] when building request bodies.

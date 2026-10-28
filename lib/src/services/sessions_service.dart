@@ -23,13 +23,16 @@ class NexusSessions {
   }) async {
     _id.distinctId = distinctId;
     if (traits != null) _id.traits.addAll(traits);
+    if (email != null) _id.email = email;
+    if (name != null) _id.name = name;
+    if (phone != null) _id.phone = phone;
     // Remember the user on device so future launches restore this identity
     // instead of starting anonymous (see NexusIdentity + Nexus._loadIdentity).
     await IdentityStore.save(
       distinctId: distinctId,
-      email: email,
-      name: name,
-      phone: phone,
+      email: _id.email,
+      name: _id.name,
+      phone: _id.phone,
       traits: _id.traits,
     );
     await _http.post('/partner/sessions/identify', {
@@ -75,6 +78,7 @@ class NexusSessions {
   Future<void> reset() async {
     _id.distinctId = null;
     _id.traits.clear();
+    _id.email = _id.name = _id.phone = null;
     _id.rotateSession();
     await IdentityStore.clear();
   }

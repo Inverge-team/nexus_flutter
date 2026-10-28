@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 
 import '../inapp/inapp_overlay.dart';
 import '../surveys/survey_overlay.dart';
+import '../voice/voice_overlay.dart';
 
 /// Auto-mounts the survey + in-app message overlays without the app touching
 /// `MaterialApp.builder`. It locates the app's root [Overlay] (by walking the
@@ -31,8 +32,10 @@ class NexusAutoOverlay {
       opaque: false,
       maintainState: true,
       builder: (_) => const Positioned.fill(
-        child: NexusSurveyOverlay(
-          child: NexusInAppOverlay(child: SizedBox.expand()),
+        child: NexusVoiceOverlay(
+          child: NexusSurveyOverlay(
+            child: NexusInAppOverlay(child: SizedBox.expand()),
+          ),
         ),
       ),
     );
