@@ -64,7 +64,7 @@ class NexusRealtime {
   }
 
   /// Join a room (first/created on the server). Re-joined automatically on
-  /// reconnect. Returns the server's acknowledgement (`{ ok, room, related }`).
+  /// reconnect. Returns the server's acknowledgement (`{ ok, room }`).
   Future<dynamic> join(String room) {
     _rooms.add(room);
     NexusLog.info('realtime join "$room"');
