@@ -1,3 +1,32 @@
+## 1.12.0
+
+**Nexus DocStore** — the document database, with an offline-first mode.
+
+### Added — DocStore
+- `Nexus.instance.docStore(getToken: ({required forceRefresh}) => user.getIdToken(forceRefresh))`
+  (or `NexusDocStore(DocStoreOptions(...))`). The token comes from your identity
+  provider; security rules see it as `auth`.
+- Firestore-style API: `collection('posts').doc(id).get/set/update/delete`,
+  `add()`, `where('total', isGreaterThanOrEqualTo: 100)`, `whereFilter(Filter.or([...]))`,
+  `Filter.related(...)`, `orderBy`, `limit`, `startAfter(cursor)`, `select`,
+  `expand`, `search`, `asOf(DateTime)`, `withCount()`, `all()` stream,
+  `count()`, `aggregate({...}, groupBy:)`, `withConverter` for typed models.
+- `FieldValue.increment / multiply / minimum / maximum / arrayUnion / arrayRemove /
+  arrayPush(keepLast:) / serverTimestamp / delete / merge` — atomic on the server.
+- `batch()` and `runTransaction()` (optimistic, retried on a race), `ifVersion`
+  preconditions, `history()` and `restore(version)`.
+- Live streams: `query.snapshots()` (with `docChanges`), `doc.snapshots()`,
+  `query.aggregateSnapshots()` — one shared socket, token refreshed in place,
+  stops on `billing_suspended` instead of reconnect-looping.
+- **Offline:** `docStore.offline(collections: [...])` — local reads/writes that
+  work without a network and sync in the background with per-field hybrid
+  logical clocks (concurrent offline edits to different fields both survive).
+  Storage: `SharedPreferencesDocStoreStorage` (default), `FileDocStoreStorage(dir)`
+  for large replicas (native), `MemoryDocStoreStorage`. `onConflict` reports
+  rejected / parked / refused writes.
+- `NexusConfig.docStoreEnabled` (default `true`): `false` makes every call throw
+  `DocStoreException('service_disabled')` without a request.
+
 ## 1.11.0
 
 **Nexus Shield** — app & device integrity: your backend (and Nexus) can tell

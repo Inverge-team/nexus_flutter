@@ -83,4 +83,14 @@ export 'src/inapp/inapp_designed_view.dart' show NexusInAppDesignedView;
 export 'src/inapp/inapp_overlay.dart' show NexusInAppOverlay, NexusInAppBuilder;
 
 // Advanced: native platform surface (device info + replay capture).
+// DocStore — the document database.
+export 'src/docstore/docstore.dart' show NexusDocStore;
+export 'src/docstore/client.dart' show DocStoreOptions, DocStoreException, DocStoreTokenProvider;
+export 'src/docstore/api.dart'
+    show DocStore, CollectionReference, DocumentReference, Query, DocumentSnapshot, QuerySnapshot, DocumentChange, DocumentChangeType, DocumentVersion, FieldValue, Filter, AggregateField, AggregateGroup, WriteBatch, Transaction;
+export 'src/docstore/live.dart' show LiveStatus;
+export 'src/docstore/offline.dart'
+    show OfflineStore, DocStoreStorage, MemoryDocStoreStorage, SharedPreferencesDocStoreStorage, OfflineConflict, SyncStatus, LocalSnapshot, LocalQuery, LocalCollection, LocalDocumentRef;
+export 'src/docstore/storage_file.dart' if (dart.library.js_interop) 'src/docstore/storage_file_stub.dart' show FileDocStoreStorage;
+export 'src/docstore/core.dart' show LocalQueryException;
 export 'nexus_platform_interface.dart' show NexusPlatform;

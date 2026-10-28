@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'docstore/client.dart' show DocStoreOptions, DocStoreTokenProvider;
+import 'docstore/docstore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -87,6 +89,14 @@ class Nexus {
 
   /// App & device integrity (see [NexusShield]).
   late final NexusShield shield;
+
+  /// Nexus DocStore with this SDK's API key and base URL. Pass [getToken] for
+  /// the signed-in end user (security rules see it as `auth`). Keep the client
+  /// you get — each call creates a new one (and its own live connection).
+  NexusDocStore docStore({DocStoreTokenProvider? getToken, Duration timeout = const Duration(seconds: 30)}) => NexusDocStore(
+        DocStoreOptions(apiKey: config.apiKey, baseUrl: config.httpBase, realtimeUrl: config.socketBase, getToken: getToken, timeout: timeout),
+        enabled: () => config.docStoreEnabled,
+      );
 
   /// Initialise the SDK once at startup. Re-calling disposes the previous
   /// instance and replaces it.

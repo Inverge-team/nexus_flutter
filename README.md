@@ -37,6 +37,7 @@ reference live on the documentation site:
 - **[Live Activities](https://docs.inverge.net/sdks/flutter/reference/live-activities)** — iOS Live Activities and Android live notifications driven from templates.
 - **[Shield](https://docs.inverge.net/products/shield/flutter)** — app and device integrity: prove requests come from your genuine app on a real device.
 - **[Voice](https://docs.inverge.net/sdks/flutter/reference/voice)** — in-app and PSTN calling, with CallKit and full-screen incoming calls when the app is closed.
+- **[DocStore](https://docs.inverge.net/sdks/flutter/reference/docstore)** — the document database: queries, live streams and offline-first sync with field-level merge.
 
 ## Links
 

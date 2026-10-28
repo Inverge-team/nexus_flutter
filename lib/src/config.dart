@@ -36,6 +36,7 @@ class NexusConfig {
     this.autoShowOverlay = true,
     this.liveActivityEnabled = false,
     this.voiceEnabled = false,
+    this.docStoreEnabled = true,
     this.remoteConfigEnabled = false,
     this.remoteConfigRealtime = false,
     this.remoteConfigDefaults = const {},
@@ -176,6 +177,11 @@ class NexusConfig {
   /// and optionally CallKit to actually carry audio / show the native call UI.
   /// Default `false`.
   final bool voiceEnabled;
+
+  /// DocStore (`Nexus.instance.docStore()`) is on by default — it does nothing
+  /// until you use it. `false` makes every DocStore call throw
+  /// `DocStoreException(code: 'service_disabled')` without a request.
+  final bool docStoreEnabled;
 
   /// Fetch Remote Config at startup (and on foreground). Read values via
   /// `nexus.remoteConfig.getString(...)` etc. Default `false` (billed per fetch
