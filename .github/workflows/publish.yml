@@ -1,0 +1,96 @@
+name: Publish to pub.dev
+
+# pub.dev only accepts an automated publish from a workflow that was started by a
+# push of a tag matching the pattern configured on the package admin page
+# (`v{{version}}`). Pushing commits — to dev or main — never publishes.
+#
+# The release ritual: bump `version:` in pubspec.yaml + CHANGELOG.md on dev, push,
+# then push the matching tag:
+#
+#   git tag v1.12.0 && git push origin v1.12.0
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+
+# Two pushes of the same tag must not race each other on pub.dev.
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to pub.dev
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write     # create the GitHub Release
+      id-token: write     # OIDC — how pub.dev authenticates this workflow
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # A tag that disagrees with pubspec.yaml would be rejected by pub.dev anyway,
+      # but only after the tests ran. Fail in the first second instead.
+      - name: The tag matches pubspec.yaml
+        id: version
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION=$(grep -E '^version:' pubspec.yaml | head -1 | awk '{print $2}' | tr -d "'\"")
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "::error::Tag $TAG does not match pubspec.yaml version $VERSION (expected v$VERSION)."
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          case "$VERSION" in
+            *-*) echo "prerelease=true"  >> "$GITHUB_OUTPUT" ;;
+            *)   echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      # pub.dev's example calls setup-dart's reusable workflow, which installs only
+      # the Dart SDK — this is a Flutter plugin (`flutter: sdk: flutter`), so that
+      # cannot even resolve dependencies. setup-dart is used here for one thing:
+      # it exchanges the OIDC token and stores the pub.dev credential, which the
+      # Flutter SDK's pub then reuses.
+      - uses: dart-lang/setup-dart@v1
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      # Nothing untested gets published.
+      - run: flutter analyze
+      - run: flutter test
+
+      - name: Dry run
+        run: flutter pub publish --dry-run
+
+      - name: Publish
+        run: flutter pub publish --force
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "::notice::Release $GITHUB_REF_NAME already exists — leaving it alone."
+            exit 0
+          fi
+          {
+            printf 'Published to pub.dev: https://pub.dev/packages/nexus_flutter/versions/%s\n\n' "$VERSION"
+            printf '```yaml\ndependencies:\n  nexus_flutter: ^%s\n```\n\n' "$VERSION"
+            printf 'See [CHANGELOG.md](https://github.com/Inverge-team/nexus_flutter/blob/dev/CHANGELOG.md).\n'
+          } > release-notes.md
+          FLAG=""
+          if [ "$PRERELEASE" = "true" ]; then FLAG="--prerelease"; fi
+          gh release create "$GITHUB_REF_NAME" $FLAG \
+            --title "nexus_flutter $VERSION" \
+            --notes-file release-notes.md \
+            --verify-tag
