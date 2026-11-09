@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 import '../nexus_platform_interface.dart';
+import 'push_auth/push_auth_service.dart' show handlePushAuthBackground;
 import 'services/push_service.dart' show renderNexusAndroidNotification;
 
 /// Firebase allows only ONE `onBackgroundMessage` handler for the whole app —
@@ -22,7 +23,9 @@ void ensureNexusBackgroundHandler() {
 }
 
 /// The single background message handler. Dispatches incoming-call pushes to the
-/// native ringer (Voice) and everything else to the notification renderer (Push).
+/// native ringer (Voice), Push Authentication requests to their handler (silent
+/// answers, approval notifications) and everything else to the notification
+/// renderer (Push).
 /// Must be top-level + vm:entry-point to run in the background isolate.
 ///
 /// The voice branches are ANDROID-only by construction: iOS rings from an APNs
@@ -61,6 +64,10 @@ Future<void> nexusUnifiedBackgroundHandler(RemoteMessage message) async {
         avatarUrl: (d['callerAvatar'] ?? d['avatarUrl']) as String?,
       );
     }
+    return;
+  }
+  if ((message.data['type'] as String?)?.startsWith('push_auth_') ?? false) {
+    await handlePushAuthBackground(message.data);
     return;
   }
   await renderNexusAndroidNotification(message);

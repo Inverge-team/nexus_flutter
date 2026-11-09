@@ -257,4 +257,34 @@ abstract class NexusPlatform extends PlatformInterface {
 
   /// iOS: forget the App Attest key id (the next call attests a new key).
   Future<void> shieldAppAttestReset() async {}
+
+  // ---- Push Authentication -----------------------------------------------------
+
+  /// Null when this device can hold a user-bound key; otherwise why not
+  /// (`android_version`, `no_screen_lock`, `biometric_not_enrolled`, `unsupported`).
+  Future<String?> pushAuthSupported() async => 'unsupported';
+
+  /// Create a FRESH presence + silent key pair under [prefix] (any previous pair
+  /// is deleted). Android keys are certified for [attestationChallenge].
+  /// Returns `{presence: {x, y, chain, hardware}, silent: {…}}`.
+  Future<Map<String, Object?>?> pushAuthCreateKeys(String prefix, Uint8List attestationChallenge) async => null;
+
+  /// The existing pair (`presenceValid` false once a new biometric invalidated it), or null.
+  Future<Map<String, Object?>?> pushAuthKeyInfo(String prefix) async => null;
+
+  Future<void> pushAuthDeleteKeys(String prefix) async {}
+
+  /// ECDSA-SHA256 (DER) with the silent key — no UI, background-safe.
+  Future<Uint8List?> pushAuthSignSilent(String prefix, Uint8List data) async => null;
+
+  /// ECDSA-SHA256 (DER) with the presence key, after the system biometric /
+  /// device-credential prompt. Throws a PlatformException whose code is
+  /// `cancelled`, `lockout`, `invalidated`, `no_activity` or `failed`.
+  Future<Uint8List?> pushAuthSignPresence(String prefix, Uint8List data, {Map<String, String?> prompt = const {}}) async => null;
+
+  /// iOS: a fresh App Attest attestation over [clientDataHash] (`{keyId, attestation}`), null when unavailable.
+  Future<Map<String, Object?>?> pushAuthAttest(Uint8List clientDataHash) async => null;
+
+  /// Remove a shown approval notification (Android: by notification [id]; iOS: by challenge [cid]).
+  Future<void> pushAuthDismiss({int? id, String? cid}) async {}
 }

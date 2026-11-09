@@ -52,6 +52,8 @@ class NexusConfig {
     this.shieldDebugToken,
     this.shieldProtectNexus = false,
     this.shieldHosts = const [],
+    this.pushAuthEnabled = false,
+    this.pushAuthSilentApproval = true,
     this.linkDomains = const [],
     this.autoRouteDeepLinks = true,
     this.onDeepLink,
@@ -252,6 +254,18 @@ class NexusConfig {
   /// receive your token. Empty (default) = sign only where you ask
   /// (`shield.headers()`, `NexusShieldClient`, `NexusShieldDioInterceptor`).
   final List<String> shieldHosts;
+
+  /// Push Authentication: this phone approves sign-ins and transactions (tap,
+  /// match the number, code display, silent). Restores the enrollment, listens
+  /// for requests by push + realtime and collects pending ones on start and
+  /// resume. Needs Firebase initialised for requests to reach a closed app.
+  /// See `Nexus.instance.pushAuth`.
+  final bool pushAuthEnabled;
+
+  /// Answer SILENT requests automatically in the background (that is what a
+  /// silent device approval is). `false` declines them silently instead, so
+  /// your server falls back to an interactive method. Default `true`.
+  final bool pushAuthSilentApproval;
 
   /// Extra hosts that serve your Nexus short links (a branded domain). The
   /// [baseUrl] host is always included.

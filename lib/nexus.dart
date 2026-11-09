@@ -52,6 +52,11 @@ export 'src/services/live_activity_service.dart' show NexusLiveActivity;
 export 'src/services/voice_service.dart' show NexusVoice;
 // Shield — app & device integrity (hardware attestation, device-bound tokens).
 export 'src/shield/shield_service.dart' show NexusShield, NexusShieldToken, NexusShieldClient;
+// Push Authentication — push + silent device approval (number match, tap, code display, silent).
+export 'src/push_auth/push_auth_service.dart'
+    show NexusPushAuth, NexusPushAuthRequest, NexusPushAuthResult, NexusPushAuthFactor, NexusPushAuthField, NexusPushAuthException;
+export 'src/push_auth/methods.dart' show NexusPushAuthMethod, NexusPushAuthMethods;
+export 'src/push_auth/push_auth_sheet.dart' show NexusPushAuthSheet;
 export 'src/voice/voice_models.dart'
     show NexusCall, NexusJoinToken, CallQualitySample, VoiceCallState, VoiceCallStateX, VoiceEndpointType, VoiceCallDirection;
 export 'src/voice/voice_engine.dart' show NexusVoiceEngine, VoiceEngineState, NoopVoiceEngine;

@@ -12,6 +12,8 @@
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <!-- Android 16 Live Updates (promoted ongoing notifications) for Live Activities. -->
   <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+  <!-- Push Authentication: the system biometric prompt that unlocks the approval key. -->
+  <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
   <application>
     <!-- Telecom binds this to draw the incoming/ongoing call UI itself. -->
