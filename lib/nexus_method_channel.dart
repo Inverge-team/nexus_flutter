@@ -530,4 +530,52 @@ class MethodChannelNexus extends NexusPlatform {
 
   @override
   Future<void> shieldAppAttestReset() => methodChannel.invokeMethod<void>('shieldAppAttestReset');
+
+  // ---- Push Authentication -----------------------------------------------------
+
+  Map<String, Object?>? _map(Map<Object?, Object?>? r) => r?.map((k, v) => MapEntry(k.toString(), v is Map ? _map(v.cast<Object?, Object?>()) : v));
+
+  @override
+  Future<String?> pushAuthSupported() async {
+    try {
+      return await methodChannel.invokeMethod<String>('pushAuthSupported');
+    } on MissingPluginException {
+      return 'unsupported';
+    }
+  }
+
+  @override
+  Future<Map<String, Object?>?> pushAuthCreateKeys(String prefix, Uint8List attestationChallenge) async =>
+      _map(await methodChannel.invokeMethod<Map<Object?, Object?>>('pushAuthCreateKeys', {'prefix': prefix, 'attestationChallenge': attestationChallenge}));
+
+  @override
+  Future<Map<String, Object?>?> pushAuthKeyInfo(String prefix) async =>
+      _map(await methodChannel.invokeMethod<Map<Object?, Object?>>('pushAuthKeyInfo', {'prefix': prefix}));
+
+  @override
+  Future<void> pushAuthDeleteKeys(String prefix) => methodChannel.invokeMethod<void>('pushAuthDeleteKeys', {'prefix': prefix});
+
+  @override
+  Future<Uint8List?> pushAuthSignSilent(String prefix, Uint8List data) =>
+      methodChannel.invokeMethod<Uint8List>('pushAuthSignSilent', {'prefix': prefix, 'data': data});
+
+  @override
+  Future<Uint8List?> pushAuthSignPresence(String prefix, Uint8List data, {Map<String, String?> prompt = const {}}) =>
+      methodChannel.invokeMethod<Uint8List>('pushAuthSignPresence', {'prefix': prefix, 'data': data, 'prompt': prompt});
+
+  @override
+  Future<Map<String, Object?>?> pushAuthAttest(Uint8List clientDataHash) async {
+    try {
+      return _map(await methodChannel.invokeMethod<Map<Object?, Object?>>('pushAuthAttest', {'clientDataHash': clientDataHash}));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> pushAuthDismiss({int? id, String? cid}) async {
+    try {
+      await methodChannel.invokeMethod<void>('pushAuthDismiss', {'id': ?id, 'cid': ?cid});
+    } catch (_) {}
+  }
 }

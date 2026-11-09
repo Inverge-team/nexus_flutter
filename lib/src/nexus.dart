@@ -30,6 +30,8 @@ import 'voice/voice_headless.dart' show persistVoiceConfig;
 import 'services/replay_service.dart';
 import 'services/sessions_service.dart';
 import 'services/surveys_service.dart';
+import 'background_dispatch.dart' show ensureNexusBackgroundHandler;
+import 'push_auth/push_auth_service.dart';
 import 'shield/shield_http_overrides.dart';
 import 'shield/shield_service.dart';
 
@@ -89,6 +91,9 @@ class Nexus {
 
   /// App & device integrity (see [NexusShield]).
   late final NexusShield shield;
+
+  /// Push Authentication — this phone as a hardware security key (see [NexusPushAuth]).
+  late final NexusPushAuth pushAuth;
 
   /// Nexus DocStore with this SDK's API key and base URL. Pass [getToken] for
   /// the signed-in end user (security rules see it as `auth`). Keep the client
@@ -154,6 +159,17 @@ class Nexus {
         NexusShieldHttpOverrides.install(shield, config.shieldHosts);
       }
       unawaited(shield.start());
+    }
+    pushAuth = NexusPushAuth(config);
+    if (config.pushAuthEnabled) {
+      // Silent requests must be answered with the app killed: that runs in the
+      // ONE shared FCM background handler (see background_dispatch.dart).
+      try {
+        ensureNexusBackgroundHandler();
+      } catch (_) {
+        NexusLog.warn('push-auth: Firebase Messaging unavailable — requests arrive only while the app is open');
+      }
+      unawaited(pushAuth.start(realtime: realtime, appId: _identity.deviceContext['appId'] as String?));
     }
     voice = NexusVoice(_http, _identity, realtime);
     if (config.voiceEnabled) {
@@ -263,6 +279,7 @@ class Nexus {
   Future<void> _onForeground() async {
     NexusLog.debug('app foregrounded');
     if (config.replayEnabled) replay.resume();
+    if (config.pushAuthEnabled) pushAuth.onResume();
     if (config.autoTrackSessions) await sessions.track();
     // Reconnect only if realtime was in use before backgrounding (rooms rejoin
     // automatically).
@@ -409,6 +426,7 @@ class Nexus {
   /// Tear down the instance (timers, socket, http).
   void dispose() {
     _lifecycle?.dispose();
+    pushAuth.dispose();
     events.dispose();
     logs.dispose();
     replay.dispose();

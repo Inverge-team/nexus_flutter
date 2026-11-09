@@ -30,6 +30,7 @@ import net.inverge.nexus.core.NexusNdk
 import net.inverge.nexus.core.NexusReplayRecorder
 import net.inverge.nexus.links.NexusLinkActivity
 import net.inverge.nexus.liveactivity.NexusLiveUpdate
+import net.inverge.nexus.pushauth.NexusPushAuth
 import net.inverge.nexus.shield.NexusShield
 import com.android.installreferrer.api.InstallReferrerClient
 import com.android.installreferrer.api.InstallReferrerStateListener
@@ -60,6 +61,7 @@ class NexusPlugin :
     // never on the platform thread.
     private val shieldIo = Executors.newSingleThreadExecutor()
     private val shield: NexusShield? by lazy { appContext?.let { NexusShield(it) } }
+    private val pushAuth: NexusPushAuth? by lazy { appContext?.let { NexusPushAuth(it) } }
 
     // Deep links seen before Dart asked for them (cold start), then live.
     private val pendingLinks = ArrayList<String>()
@@ -131,6 +133,70 @@ class NexusPlugin :
                 } catch (e: Throwable) {
                     result.error("shield_play", e.message, null)
                 }
+            }
+        }
+    }
+
+    /** Push Authentication — two Keystore keys + the biometric prompt. Results always hop back to main. */
+    private fun handlePushAuth(call: MethodCall, result: Result) {
+        val p = pushAuth ?: return result.error("push_auth_unavailable", "no context", null)
+        val prefix = call.argument<String>("prefix") ?: "nexus_push_auth"
+        fun ok(v: Any?) = main.post { result.success(v) }
+        fun fail(code: String, e: Throwable) = main.post {
+            result.error(if (e is NexusPushAuth.Unsupported) "unsupported" else code, e.message ?: e.javaClass.simpleName, (e as? NexusPushAuth.Unsupported)?.reason)
+        }
+        when (call.method) {
+            "pushAuthSupported" -> ok(p.unsupportedReason())
+            "pushAuthCreateKeys" -> shieldIo.execute {
+                try {
+                    ok(p.createKeys(prefix, call.argument<ByteArray>("attestationChallenge") ?: ByteArray(0)))
+                } catch (e: Throwable) {
+                    fail("push_auth_key", e)
+                }
+            }
+            "pushAuthKeyInfo" -> shieldIo.execute {
+                try {
+                    ok(p.keyInfo(prefix))
+                } catch (e: Throwable) {
+                    fail("push_auth_key", e)
+                }
+            }
+            "pushAuthDeleteKeys" -> shieldIo.execute {
+                try {
+                    p.deleteKeys(prefix)
+                    ok(null)
+                } catch (e: Throwable) {
+                    fail("push_auth_key", e)
+                }
+            }
+            "pushAuthSignSilent" -> shieldIo.execute {
+                try {
+                    ok(p.signSilent(prefix, call.argument<ByteArray>("data") ?: ByteArray(0)))
+                } catch (e: Throwable) {
+                    fail("push_auth_sign", e)
+                }
+            }
+            "pushAuthSignPresence" -> {
+                @Suppress("UNCHECKED_CAST")
+                val prompt = (call.argument<Map<String, String?>>("prompt") ?: emptyMap())
+                try {
+                    p.signWithPresence(
+                        activityBinding?.activity,
+                        prefix,
+                        call.argument<ByteArray>("data") ?: ByteArray(0),
+                        prompt,
+                        { r -> main.post(r) },
+                    ) { sig, err ->
+                        main.post { if (sig != null) result.success(sig) else result.error(err ?: "failed", err, null) }
+                    }
+                } catch (e: Throwable) {
+                    result.error("failed", e.message, null)
+                }
+            }
+            "pushAuthDismiss" -> {
+                val id = call.argument<Int>("id")
+                if (id != null) (appContext?.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)?.cancel(id)
+                result.success(null)
             }
         }
     }
@@ -215,6 +281,8 @@ class NexusPlugin :
             }
             "installReferrer" -> installReferrer(result)
             "shieldEnsureKey", "shieldSign", "shieldDeleteKey", "shieldPlayIntegrity" -> handleShield(call, result)
+            "pushAuthSupported", "pushAuthCreateKeys", "pushAuthKeyInfo", "pushAuthDeleteKeys", "pushAuthSignSilent",
+            "pushAuthSignPresence", "pushAuthDismiss" -> handlePushAuth(call, result)
             "showNotification" -> showNotification(call, result)
             "showLiveActivity" -> showLiveActivity(call, result)
             "showLiveActivityTemplate" -> showLiveActivityTemplate(call, result)

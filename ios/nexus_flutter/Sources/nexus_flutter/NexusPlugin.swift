@@ -92,6 +92,9 @@ public class NexusPlugin: NSObject, FlutterPlugin {
       result(nil) // Apple has no install referrer; installs match server-side.
     case "shieldEnsureKey", "shieldSign", "shieldDeleteKey", "shieldAppAttestSupported", "shieldAppAttest", "shieldAppAttestReset":
       NexusShield.handle(call, result)
+    case "pushAuthSupported", "pushAuthCreateKeys", "pushAuthKeyInfo", "pushAuthDeleteKeys", "pushAuthSignSilent",
+         "pushAuthSignPresence", "pushAuthAttest", "pushAuthDismiss":
+      NexusPushAuth.handle(call, result)
     default:
       result(FlutterMethodNotImplemented)
     }

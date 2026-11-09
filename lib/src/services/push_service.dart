@@ -272,11 +272,15 @@ class NexusPush {
   }
 
   /// Render one foreground message as a native notification (Android).
-  Future<void> _showForeground(RemoteMessage m) => renderNexusAndroidNotification(
+  Future<void> _showForeground(RemoteMessage m) async {
+    // Push Authentication handles its own messages (it shows the approval sheet).
+    if ((m.data['type'] as String?)?.startsWith('push_auth_') ?? false) return;
+    await renderNexusAndroidNotification(
         m,
         channelId: _cfg.pushAndroidChannelId,
         channelName: _cfg.pushAndroidChannelName,
       );
+  }
 
   Future<bool> _ensureFirebase(PushPlatform platform) async {
     if (Firebase.apps.isNotEmpty) return true;
