@@ -69,6 +69,12 @@ abstract class NexusPlatform extends PlatformInterface {
   /// Receives the decoded [payload] map so the caller can attribute the open.
   void onNotificationTap(void Function(Map<String, dynamic> data) sink) {}
 
+  /// Taps on notifications posted via [showNotification] that happened before
+  /// Dart was listening — notably the tap that cold-started the app, which
+  /// FCM's `getInitialMessage()` never sees. Returns and clears them, and
+  /// switches native to live delivery via [onNotificationTap].
+  Future<List<Map<String, dynamic>>> pushTakePendingTaps() async => const [];
+
   /// Deep links (Nexus links). Native code sees every URL that opens the app
   /// before Flutter does; it queues them until Dart asks, so a cold-start link
   /// is never lost to the engine starting first. Returns the queued URLs and

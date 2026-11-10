@@ -1,3 +1,31 @@
+## 1.13.1
+
+### Fixed — Push
+- **Android: tapping a notification while the app was killed now fires
+  `push.onOpened`.** The SDK renders every Android notification itself, so the
+  tap that cold-starts the app arrives on the launch intent — which FCM's
+  `getInitialMessage()` never sees. Native now captures it at activity attach,
+  queues it until push starts, and delivers it (open tracking included). A
+  relaunch from Recents doesn't replay an old tap.
+- `NexusPushOpen` (the type `onOpened` receives) is now exported from
+  `package:nexus_flutter/nexus.dart`.
+
+## 1.13.0
+
+**Nexus Push Authentication** — approve sign-ins and actions from a trusted device.
+
+### Added — Push Authentication
+- `Nexus.instance.pushAuth.enroll(token)` creates two hardware keys (Android
+  Keystore/StrongBox with per-use biometric/credential auth, iOS Secure Enclave
+  with `.userPresence`), attests them (key attestation / App Attest) and
+  registers the device.
+- Requests arrive by push, realtime and on app start/resume; `approve()` /
+  `deny(fraud:)` sign over the displayed details. Silent requests are answered
+  in the shared FCM background handler.
+- `NexusPushAuthSheet` renders every built-in method (number match, tap, code
+  display).
+- `NexusConfig.pushAuthEnabled` / `pushAuthSilentApproval`.
+
 ## 1.12.0
 
 **Nexus DocStore** — the document database, with an offline-first mode.

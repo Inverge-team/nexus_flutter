@@ -123,6 +123,16 @@ class MethodChannelNexus extends NexusPlatform {
       _tapSink = sink;
 
   @override
+  Future<List<Map<String, dynamic>>> pushTakePendingTaps() async {
+    try {
+      final res = await methodChannel.invokeMethod<List<dynamic>>('pushTakePendingTaps');
+      return (res ?? const []).map(_decode).toList();
+    } catch (_) {
+      return const []; // no native notification rendering on this platform
+    }
+  }
+
+  @override
   Future<List<String>> linksTakePending() async {
     try {
       final res = await methodChannel.invokeMethod<List<dynamic>>('linksTakePending');
