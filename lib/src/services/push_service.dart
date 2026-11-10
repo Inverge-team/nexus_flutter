@@ -265,7 +265,13 @@ class NexusPush {
     if (platform != PushPlatform.android) return;
 
     // Taps on our native notification come back here → attribute the open.
+    // Live taps first, then drain the ones queued before Dart listened (the tap
+    // that cold-started the app): native goes live the moment the queue is
+    // taken, so nothing falls between.
     NexusPlatform.instance.onNotificationTap((data) => unawaited(reportOpen(data)));
+    for (final data in await NexusPlatform.instance.pushTakePendingTaps()) {
+      unawaited(reportOpen(data));
+    }
 
     await _fgSub?.cancel();
     _fgSub = FirebaseMessaging.onMessage.listen(_showForeground);

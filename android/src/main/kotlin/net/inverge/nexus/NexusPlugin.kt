@@ -67,6 +67,10 @@ class NexusPlugin :
     private val pendingLinks = ArrayList<String>()
     private var linksLive = false
 
+    // Notification taps seen before Dart asked for them (cold start), then live.
+    private val pendingTaps = ArrayList<Map<String, Any?>>()
+    private var tapsLive = false
+
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(binding.binaryMessenger, "nexus")
         channel.setMethodCallHandler(this)
@@ -272,6 +276,11 @@ class NexusPlugin :
                 result.success(ArrayList(pendingLinks))
                 pendingLinks.clear()
                 linksLive = true
+            }
+            "pushTakePendingTaps" -> {
+                result.success(ArrayList(pendingTaps))
+                pendingTaps.clear()
+                tapsLive = true
             }
             "linksConfigure" -> {
                 val hosts = call.argument<List<String>>("hosts") ?: emptyList()
@@ -591,9 +600,24 @@ class NexusPlugin :
     override fun onNewIntent(intent: Intent): Boolean {
         captureLink(intent)
         maybeForwardAnswer(intent)
+        captureTap(intent)
+        return false
+    }
+
+    /**
+     * A tap on a notification we posted carries its payload on the launch
+     * intent. Warm, it arrives via [onNewIntent]; cold (app killed), it IS the
+     * activity's intent — and FCM's getInitialMessage() knows nothing of it, so
+     * it is queued until Dart drains it (`pushTakePendingTaps`), then live.
+     */
+    private fun captureTap(intent: Intent?) {
+        if (intent == null) return
         val payload = intent.getStringExtra(EXTRA_PAYLOAD)
         val actionId = intent.getStringExtra(EXTRA_ACTION_ID)
-        if (payload == null && actionId == null) return false
+        if (payload == null && actionId == null) return
+        // Reopened from Recents after process death: Android replays the
+        // original intent with its extras — that tap was already delivered.
+        if ((intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return
         val map = HashMap<String, Any?>()
         if (payload != null) {
             try {
@@ -606,8 +630,11 @@ class NexusPlugin :
         intent.removeExtra(EXTRA_PAYLOAD) // consume so it fires once
         intent.removeExtra(EXTRA_ACTION_ID)
         intent.removeExtra(EXTRA_ACTION_URL)
-        main.post { channel.invokeMethod("onNotificationTap", map) }
-        return false
+        if (tapsLive) {
+            main.post { channel.invokeMethod("onNotificationTap", map) }
+        } else {
+            pendingTaps.add(map)
+        }
     }
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
@@ -616,6 +643,8 @@ class NexusPlugin :
         // Launched from a deep link (cold start) — capture it before Flutter
         // reads the intent for its initial route.
         captureLink(binding.activity.intent)
+        // Launched by tapping one of our notifications (cold start) — queue it.
+        captureTap(binding.activity.intent)
         // The app may have been launched by answering a native call — forward it.
         maybeForwardAnswer(binding.activity.intent)
     }
