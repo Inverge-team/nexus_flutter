@@ -1,0 +1,57 @@
+name: Tag release
+
+# Merging dev into main releases: when main's pubspec.yaml has a version with no
+# `v<version>` tag yet, push that tag — which starts publish.yml (pub.dev only
+# accepts an automated publish from a workflow started by a tag push).
+#
+# The tag is pushed over SSH with a deploy key, not GITHUB_TOKEN: a tag pushed with
+# GITHUB_TOKEN does not trigger other workflows, so publish.yml would never run.
+# A deploy key never expires and can only reach this repo.
+# RELEASE_DEPLOY_KEY = the private half of a deploy key with write access
+# (repo Settings → Deploy keys → "Allow write access").
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: tag-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  tag:
+    name: Tag the pubspec version
+    runs-on: ubuntu-latest
+    steps:
+      - name: RELEASE_DEPLOY_KEY is set
+        env:
+          RELEASE_DEPLOY_KEY: ${{ secrets.RELEASE_DEPLOY_KEY }}
+        run: |
+          if [ -z "$RELEASE_DEPLOY_KEY" ]; then
+            echo "::error::Add the RELEASE_DEPLOY_KEY secret (private key of a write-enabled deploy key) — see the comment at the top of tag-release.yml."
+            exit 1
+          fi
+
+      # ssh-key makes `origin` an SSH remote authenticated with the deploy key.
+      - uses: actions/checkout@v4
+        with:
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
+
+      - name: Push v<version> if it is new
+        run: |
+          VERSION=$(grep -E '^version:' pubspec.yaml | head -1 | awk '{print $2}' | tr -d "'\"")
+          if [ -z "$VERSION" ]; then
+            echo "::error::No version: in pubspec.yaml."
+            exit 1
+          fi
+          TAG="v$VERSION"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            echo "::notice::$TAG already exists — nothing to release."
+            exit 0
+          fi
+          git tag "$TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$TAG"
+          echo "::notice::Pushed $TAG — publish.yml takes it from here."
