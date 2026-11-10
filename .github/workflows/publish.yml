@@ -2,10 +2,11 @@ name: Publish to pub.dev
 
 # pub.dev only accepts an automated publish from a workflow that was started by a
 # push of a tag matching the pattern configured on the package admin page
-# (`v{{version}}`). Pushing commits — to dev or main — never publishes.
+# (`v{{version}}`). Pushing commits never publishes directly.
 #
 # The release ritual: bump `version:` in pubspec.yaml + CHANGELOG.md on dev, push,
-# then push the matching tag:
+# then merge dev into main — tag-release.yml pushes the matching tag, which starts
+# this workflow. To release by hand instead:
 #
 #   git tag v1.12.0 && git push origin v1.12.0
 on:
