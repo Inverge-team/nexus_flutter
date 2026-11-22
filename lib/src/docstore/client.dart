@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import '../billing_suspension.dart';
+import '../app_identity.dart';
+import '../shield/shield_signing.dart';
 
 /// Returns the signed-in end user's token from your identity provider
 /// (Firebase Auth, Auth0, Cognito, your server…), or null when signed out.
@@ -78,16 +80,19 @@ class DocStoreHttp {
         402,
       );
     }
-    Future<http.Response> send(bool force) async {
-      final headers = <String, String>{'content-type': 'application/json', 'x-api-key': options.apiKey};
+    Future<http.Response> send(bool force, {bool refreshShield = false}) async {
+      final headers = <String, String>{'content-type': 'application/json', 'x-api-key': options.apiKey, ...NexusAppIdentity.headers};
+      final encoded = body == null ? null : utf8.encode(jsonEncode(body));
       if (options.serviceKey != null) {
         headers['x-nexus-service-key'] = options.serviceKey!;
       } else {
         final t = await token(forceRefresh: force);
         if (t != null) headers['authorization'] = 'Bearer $t';
+        // Keys restricted to attested apps (API keys → Application restrictions).
+        headers.addAll(await NexusShieldSigning.headers(method, uri, body: encoded, forceRefresh: refreshShield));
       }
       final req = http.Request(method, uri)..headers.addAll(headers);
-      if (body != null) req.body = jsonEncode(body);
+      if (encoded != null) req.bodyBytes = encoded;
       return http.Response.fromStream(await _client.send(req).timeout(options.timeout));
     }
 
@@ -96,6 +101,10 @@ class DocStoreHttp {
       res = await send(false);
       // The token can expire between getToken() and the request.
       if (res.statusCode == 401 && options.getToken != null && options.serviceKey == null) res = await send(true);
+      final restricted = options.serviceKey == null ? NexusShieldSigning.restrictionReason(res.statusCode, _tryDecode(res.body)) : null;
+      if ((restricted == 'shield_token_required' || restricted == 'shield_token_invalid') && await NexusShieldSigning.activate()) {
+        res = await send(false, refreshShield: restricted == 'shield_token_invalid');
+      }
     } catch (e) {
       throw DocStoreException('DocStore request failed: $e', 'network', 0);
     }
@@ -116,6 +125,14 @@ class DocStoreHttp {
       );
     }
     return decoded;
+  }
+
+  static Object? _tryDecode(String body) {
+    try {
+      return body.isEmpty ? null : jsonDecode(body);
+    } catch (_) {
+      return null;
+    }
   }
 
   void close() => _client.close();

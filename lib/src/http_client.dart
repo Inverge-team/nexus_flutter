@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'billing_suspension.dart';
+import 'app_identity.dart';
 import 'config.dart';
 import 'identity.dart';
 import 'logging.dart';
+import 'shield/shield_signing.dart';
 
 /// Thin JSON transport over the `/partner/*` data-plane endpoints. Attaches the
 /// API key + client-OS headers; never throws into the caller's hot path.
@@ -48,18 +50,26 @@ class NexusHttp {
   final NexusIdentity _identity;
   final http.Client _client;
 
-  /// Adds Shield headers to Nexus's own requests when the app opted in
-  /// ([NexusConfig.shieldProtectNexus]). Never applied to `/partner/shield/*`.
-  Future<Map<String, String>> Function(String method, Uri url, List<int> body)? signer;
+  /// Called on `403 api_key_restricted` (the key only accepts attested apps)
+  /// with the reason; resolves true when the request should be retried — Shield
+  /// signing is then on ([NexusShieldSigning.active]). Set by Nexus.
+  Future<bool> Function(String reason)? onRestricted;
 
-  Future<Map<String, String>> _sign(Uri uri, String path, List<int> body) async {
-    final s = signer;
-    if (s == null || path.startsWith('/partner/shield')) return const {};
-    try {
-      return await s('POST', uri, body);
-    } catch (_) {
-      return const {};
-    }
+  /// Shield headers on Nexus's own requests while signing is active (opted in
+  /// via [NexusConfig.shieldProtectNexus], or the key turned out restricted).
+  /// Never applied to `/partner/shield/*` — that is where tokens come from.
+  Future<Map<String, String>> _sign(Uri uri, String path, List<int> body, {bool forceRefresh = false}) async {
+    if (path.startsWith('/partner/shield') || !NexusShieldSigning.active) return const {};
+    return NexusShieldSigning.headers('POST', uri, body: body, forceRefresh: forceRefresh);
+  }
+
+  /// One retry after a restriction refusal, signed (with a fresh token when the old one was refused).
+  Future<bool> _retryRestricted(String path, http.Response res) async {
+    final hook = onRestricted;
+    if (hook == null || path.startsWith('/partner/shield')) return false;
+    final reason = NexusShieldSigning.restrictionReason(res.statusCode, _decode(res.body));
+    if (reason == null) return false;
+    return hook(reason);
   }
 
   /// Like [post] but returns the status and decoded body for ANY response, so
@@ -100,6 +110,7 @@ class NexusHttp {
     return {
       'content-type': 'application/json',
       'x-api-key': _config.apiKey,
+      ...NexusAppIdentity.headers,
       if (os is String) 'x-client-os': os,
       if (osVersion is String) 'x-client-os-version': osVersion,
     };
@@ -120,13 +131,17 @@ class NexusHttp {
     NexusLog.debug('→ POST $path');
     try {
       final encoded = utf8.encode(jsonEncode(body));
-      final res = await _client
+      Future<http.Response> send({bool forceRefresh = false}) async => _client
           .post(
             uri,
-            headers: {..._headers, ...await _sign(uri, path, encoded), ...?extraHeaders},
+            headers: {..._headers, ...await _sign(uri, path, encoded, forceRefresh: forceRefresh), ...?extraHeaders},
             body: encoded,
           )
           .timeout(const Duration(seconds: 20));
+      var res = await send();
+      if (res.statusCode == 403 && await _retryRestricted(path, res)) {
+        res = await send(forceRefresh: NexusShieldSigning.restrictionReason(res.statusCode, _decode(res.body)) == 'shield_token_invalid');
+      }
       final ms = sw.elapsedMilliseconds;
       _observe(path, res.statusCode, res.statusCode == 402 ? _decode(res.body) : null);
       if (res.statusCode == 402) return null; // logged once by _observe

@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 import '../../nexus_platform_interface.dart';
 import '../shield/jose.dart';
 import '../billing_suspension.dart';
+import '../app_identity.dart';
+import '../shield/shield_signing.dart';
 
 /// What Push Authentication persists between runs (SharedPreferences) — enough
 /// for the BACKGROUND isolate to answer a silent challenge while the app is
@@ -102,13 +104,31 @@ class PushAuthApi {
       throw NexusPushAuthException('billing_suspended',
           NexusBillingSuspension.message(NexusBillingSuspension.instance.remaining(suspension)), status: 402);
     }
-    final proof = await _proof(jwk, method, url);
-    final headers = {'x-api-key': state.apiKey, 'content-type': 'application/json', 'dpop': proof};
-    final http.Response res;
-    try {
+    // `DPoP` is the factor's own proof; a key restricted to attested apps also
+    // needs Shield's, which therefore rides in X-Nexus-Shield-Proof.
+    Future<http.Response> send({bool refreshShield = false}) async {
+      final proof = await _proof(jwk, method, url);
+      final encoded = body == null ? null : utf8.encode(jsonEncode(body));
+      final headers = {
+        'x-api-key': state.apiKey,
+        'content-type': 'application/json',
+        'dpop': proof,
+        ...await NexusAppIdentity.load(),
+        // `{}` unless signing is on — in a background isolate that is read from what the app persisted.
+        ...await NexusShieldSigning.headers(method, url, body: encoded, separateProof: true, forceRefresh: refreshShield),
+      };
       final req = http.Request(method, url)..headers.addAll(headers);
-      if (body != null) req.body = jsonEncode(body);
-      res = await http.Response.fromStream(await _client.send(req)).timeout(const Duration(seconds: 20));
+      if (encoded != null) req.bodyBytes = encoded;
+      return http.Response.fromStream(await _client.send(req)).timeout(const Duration(seconds: 20));
+    }
+
+    http.Response res;
+    try {
+      res = await send();
+      final restricted = NexusShieldSigning.restrictionReason(res.statusCode, _decodeOrNull(res.body));
+      if ((restricted == 'shield_token_required' || restricted == 'shield_token_invalid') && await NexusShieldSigning.activate()) {
+        res = await send(refreshShield: restricted == 'shield_token_invalid');
+      }
     } catch (e) {
       throw NexusPushAuthException('network', '$e');
     }
@@ -156,4 +176,12 @@ class PushAuthApi {
   }
 
   void close() => _client.close();
+}
+
+Object? _decodeOrNull(String body) {
+  try {
+    return body.isEmpty ? null : jsonDecode(body);
+  } catch (_) {
+    return null;
+  }
 }

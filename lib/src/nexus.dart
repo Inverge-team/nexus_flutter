@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../nexus_platform_interface.dart';
 import 'billing_suspension.dart';
+import 'app_identity.dart';
 import 'config.dart';
 import 'overlay/nexus_auto_overlay.dart';
 import 'http_client.dart';
@@ -35,6 +36,7 @@ import 'background_dispatch.dart' show ensureNexusBackgroundHandler;
 import 'push_auth/push_auth_service.dart';
 import 'shield/shield_http_overrides.dart';
 import 'shield/shield_service.dart';
+import 'shield/shield_signing.dart';
 
 /// The Nexus umbrella SDK — one entry point for every service. Initialise once
 /// at startup; then use any service, all correlated to the same journey session:
@@ -121,6 +123,7 @@ class Nexus {
     );
 
     _identity.deviceContext = await NexusPlatform.instance.deviceInfo();
+    await NexusAppIdentity.init(_identity.deviceContext);
     await _loadDeviceKey();
     await _loadIdentity();
     await _loadAppInfo();
@@ -151,17 +154,39 @@ class Nexus {
     inApp = NexusInApp(_http, _identity, config);
     liveActivity = NexusLiveActivity(_http, _identity);
     if (config.liveActivityEnabled) liveActivity.wire();
-    shield = NexusShield(_http, config)..appId = _identity.deviceContext['appId'] as String?;
+    final appId = _identity.deviceContext['appId'] as String?;
+    shield = NexusShield(_http, config)..appId = appId;
     if (config.shieldEnabled) {
       registerGlobalShield(() => Nexus.isInitialized ? Nexus.instance.shield : null);
-      if (config.shieldProtectNexus) {
-        _http.signer = (method, url, body) => shield.headers(method: method, url: url, body: body);
-      }
+      // Nexus's own calls carry Shield when the app opted in, or once Nexus
+      // says the key only accepts attested apps (API keys → Application
+      // restrictions) — then every request is retried once, signed.
+      await NexusShieldSigning.attach(config, () => shield, appId: appId);
+      _http.onRestricted = (reason) async {
+        if (reason != 'shield_token_required' && reason != 'shield_token_invalid') {
+          NexusLog.error('this API key does not accept this app ($reason) — check API keys → Application restrictions in the console');
+          return false;
+        }
+        return NexusShieldSigning.activate();
+      };
       // Sign the app's own API calls with no interceptor (dart:io clients).
       if (config.shieldHosts.isNotEmpty && !kIsWeb) {
         NexusShieldHttpOverrides.install(shield, config.shieldHosts);
       }
       unawaited(shield.start());
+    } else {
+      var warned = false;
+      _http.onRestricted = (reason) async {
+        if (!warned) {
+          warned = true;
+          NexusLog.error(reason == 'shield_token_required' || reason == 'shield_token_invalid'
+              ? 'this API key only accepts Shield-attested apps ($reason): set NexusConfig.shieldEnabled: true, '
+                  'or switch the key to basic verification (API keys → Application restrictions in the console)'
+              : 'this API key does not accept this app ($reason) — check the package name / signing certificate / '
+                  'bundle ID under API keys → Application restrictions in the console');
+        }
+        return false;
+      };
     }
     pushAuth = NexusPushAuth(config);
     if (config.pushAuthEnabled) {

@@ -685,6 +685,7 @@ class NexusPlugin :
             val pInfo = pm.getPackageInfo(pkg, 0)
             info["installTime"] = pInfo.firstInstallTime // epoch ms
             info["updateTime"] = pInfo.lastUpdateTime
+            info["signingCerts"] = signingCertSha256(pm, pkg)
             info["installerStore"] = if (Build.VERSION.SDK_INT >= 30) {
                 pm.getInstallSourceInfo(pkg).installingPackageName
             } else {
@@ -695,6 +696,29 @@ class NexusPlugin :
             // best-effort — never fail the channel call
         }
         return info
+    }
+
+    /**
+     * SHA-256 of the certificate(s) the installed app is signed with, lowercase
+     * hex — sent as `X-Android-Cert` for API keys restricted to apps (basic
+     * verification). With key rotation, the current signer(s) only.
+     */
+    private fun signingCertSha256(pm: android.content.pm.PackageManager, pkg: String): List<String> = try {
+        val sigs = if (Build.VERSION.SDK_INT >= 28) {
+            val si = pm.getPackageInfo(pkg, android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES).signingInfo
+            when {
+                si == null -> emptyArray<android.content.pm.Signature>()
+                si.hasMultipleSigners() -> si.apkContentsSigners
+                else -> si.signingCertificateHistory?.takeLast(1)?.toTypedArray() ?: emptyArray<android.content.pm.Signature>()
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getPackageInfo(pkg, android.content.pm.PackageManager.GET_SIGNATURES).signatures ?: emptyArray<android.content.pm.Signature>()
+        }
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        sigs.map { s -> md.digest(s.toByteArray()).joinToString("") { "%02x".format(it) } }
+    } catch (_: Throwable) {
+        emptyList()
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {

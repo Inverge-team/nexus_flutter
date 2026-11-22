@@ -1,3 +1,23 @@
+## 1.15.0
+
+### Added — API-key application restrictions
+- **Keys restricted to apps work out of the box.** Every Nexus request and
+  socket handshake now carries the app's identity — Android: `X-Android-Package`
+  + `X-Android-Cert` (the signing certificate's SHA-256, read natively);
+  iOS: `X-Ios-Bundle-Identifier` — so a key restricted to your Android and iOS
+  apps (console → API keys → Application restrictions, *Basic*) accepts it with
+  no code change. Background isolates (incoming calls, Push Authentication)
+  send it too.
+- **Shield-attested restrictions.** With `shieldEnabled: true`, when Nexus
+  answers `403 api_key_restricted` because a request has no (valid) Shield
+  token, the SDK turns Shield signing on, retries once, and keeps signing on
+  later launches — HTTP, realtime and DocStore sockets (a fresh proof per
+  connect), DocStore HTTP, Push Authentication (Shield's proof in
+  `X-Nexus-Shield-Proof`) and the headless voice isolate. `shieldProtectNexus`
+  is no longer needed for this.
+- Any other restriction refusal is logged once with what to check in the
+  console.
+
 ## 1.14.1
 
 ### Fixed — Live Activities
