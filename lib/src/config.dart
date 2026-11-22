@@ -291,7 +291,7 @@ class NexusConfig {
   final bool remoteConfigRealtime;
 
   /// In-app default Remote Config values, used until/unless the server provides
-  /// a value for a key. Mirrors Firebase `setDefaults`.
+  /// a value for a key.
   final Map<String, Object?> remoteConfigDefaults;
 
   /// App version reported with telemetry (e.g. from package_info). Optional.
