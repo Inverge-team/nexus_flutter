@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../nexus_platform_interface.dart';
+import 'billing_suspension.dart';
 import 'config.dart';
 import 'overlay/nexus_auto_overlay.dart';
 import 'http_client.dart';
@@ -129,6 +130,8 @@ class Nexus {
       'appVersion=${_identity.deviceContext['appVersion']}',
     );
     _http = NexusHttp(config, _identity);
+    // A billing-suspension pause from a previous launch still holds.
+    await NexusBillingSuspension.instance.restore(_http.suspensionKey);
     _outbox = NexusOutbox(_http, config);
     await _outbox.init();
 

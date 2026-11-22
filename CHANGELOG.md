@@ -1,3 +1,14 @@
+## 1.14.0
+
+### Fixed — billing suspension
+- **One `402 billing_suspended` now stops every call.** The SDK sends nothing for
+  the pause the API asks for (`details.retryAfterSeconds`, default 5 minutes):
+  telemetry is dropped (not queued for later), requests return `null`, DocStore
+  and Push Auth throw `billing_suspended` without a request, and the realtime
+  socket stops reconnecting until the pause ends. Then one probe goes out; a
+  refusal starts a new pause, success resumes. The pause is saved on the device,
+  so restarting the app doesn't skip it. Messaging is never paused.
+
 ## 1.13.1
 
 ### Fixed — Push

@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../../nexus_platform_interface.dart';
 import '../shield/jose.dart';
+import '../billing_suspension.dart';
 
 /// What Push Authentication persists between runs (SharedPreferences) — enough
 /// for the BACKGROUND isolate to answer a silent challenge while the app is
@@ -96,6 +97,11 @@ class PushAuthApi {
     final jwk = silentJwk ?? state.silentJwk;
     if (jwk == null) throw NexusPushAuthException('not_enrolled', 'This device is not enrolled');
     final url = Uri.parse('${state.baseUrl}$_prefix$path');
+    final suspension = NexusBillingSuspension.keyFor(state.baseUrl, state.apiKey);
+    if (!NexusBillingSuspension.instance.begin(suspension, _prefix)) {
+      throw NexusPushAuthException('billing_suspended',
+          NexusBillingSuspension.message(NexusBillingSuspension.instance.remaining(suspension)), status: 402);
+    }
     final proof = await _proof(jwk, method, url);
     final headers = {'x-api-key': state.apiKey, 'content-type': 'application/json', 'dpop': proof};
     final http.Response res;
@@ -111,6 +117,9 @@ class PushAuthApi {
       final d = res.body.isEmpty ? null : jsonDecode(res.body);
       if (d is Map<String, dynamic>) decoded = d;
     } catch (_) {}
+    final failure = decoded['error'];
+    NexusBillingSuspension.instance.record(suspension, _prefix, res.statusCode,
+        code: failure is Map ? failure['code'] : null, details: failure is Map ? failure['details'] : null);
     if (res.statusCode >= 400) {
       final err = (decoded['error'] as Map?)?.cast<String, Object?>() ?? const {};
       final details = (err['details'] as Map?)?.cast<String, Object?>();

@@ -491,7 +491,7 @@ class NexusPushAuth {
 }
 
 /// SDK version reported at enrollment.
-const nexusFlutterVersion = '1.13.0';
+const nexusFlutterVersion = '1.14.0';
 
 /// Build a signed response (shared by the UI isolate and the background isolate).
 Future<String> buildResponse(

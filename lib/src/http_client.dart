@@ -2,15 +2,47 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'billing_suspension.dart';
 import 'config.dart';
 import 'identity.dart';
 import 'logging.dart';
 
 /// Thin JSON transport over the `/partner/*` data-plane endpoints. Attaches the
 /// API key + client-OS headers; never throws into the caller's hot path.
+///
+/// Every call passes the billing-suspension breaker ([NexusBillingSuspension]):
+/// after a 402 `billing_suspended` nothing is sent until the pause ends —
+/// calls return null, the same "no answer" every caller already handles.
 class NexusHttp {
   NexusHttp(this._config, this._identity, {http.Client? client})
-    : _client = client ?? http.Client();
+    : _client = client ?? http.Client(),
+      suspensionKey = NexusBillingSuspension.keyFor(_config.httpBase, _config.apiKey);
+
+  /// This client's key in [NexusBillingSuspension].
+  final String suspensionKey;
+
+  /// Whether calls are currently paused by a billing suspension.
+  bool get suspended => NexusBillingSuspension.instance.remaining(suspensionKey) > Duration.zero;
+
+  bool _admit(String path) {
+    if (NexusBillingSuspension.instance.begin(suspensionKey, path)) return true;
+    NexusLog.debug('skipped POST $path — billing suspended');
+    return false;
+  }
+
+  void _observe(String path, int status, Object? decoded) {
+    final error = decoded is Map ? decoded['error'] : null;
+    final seconds = NexusBillingSuspension.instance.record(
+      suspensionKey,
+      path,
+      status,
+      code: error is Map ? error['code'] : null,
+      details: error is Map ? error['details'] : null,
+    );
+    if (seconds != null) {
+      NexusLog.warn('API access is suspended for an overdue invoice — pausing every Nexus call for ${seconds}s');
+    }
+  }
 
   final NexusConfig _config;
   final NexusIdentity _identity;
@@ -38,6 +70,9 @@ class NexusHttp {
     Map<String, Object?> body, {
     Map<String, String>? extraHeaders,
   }) async {
+    if (!_admit(path)) {
+      return (status: 402, body: <String, dynamic>{'error': {'code': 'billing_suspended', 'message': 'API access is suspended for an overdue invoice'}});
+    }
     final uri = Uri.parse('${_config.httpBase}$path');
     NexusLog.debug('→ POST $path');
     try {
@@ -50,6 +85,7 @@ class NexusHttp {
         final d = res.body.isEmpty ? null : jsonDecode(res.body);
         decoded = d is Map<String, dynamic> ? d : null;
       } catch (_) {}
+      _observe(path, res.statusCode, decoded);
       if (res.statusCode >= 400) NexusLog.warn('← ${res.statusCode} POST $path — ${_summarize(res.body)}');
       return (status: res.statusCode, body: decoded);
     } catch (e, st) {
@@ -78,6 +114,7 @@ class NexusHttp {
     Map<String, Object?> body, {
     Map<String, String>? extraHeaders,
   }) async {
+    if (!_admit(path)) return null;
     final uri = Uri.parse('${_config.httpBase}$path');
     final sw = Stopwatch()..start();
     NexusLog.debug('→ POST $path');
@@ -91,6 +128,8 @@ class NexusHttp {
           )
           .timeout(const Duration(seconds: 20));
       final ms = sw.elapsedMilliseconds;
+      _observe(path, res.statusCode, res.statusCode == 402 ? _decode(res.body) : null);
+      if (res.statusCode == 402) return null; // logged once by _observe
       if (res.statusCode >= 200 && res.statusCode < 300) {
         NexusLog.debug('← ${res.statusCode} POST $path (${ms}ms)');
         if (res.body.isEmpty) return <String, dynamic>{};
@@ -107,6 +146,14 @@ class NexusHttp {
         e,
         st,
       );
+      return null;
+    }
+  }
+
+  static Object? _decode(String body) {
+    try {
+      return body.isEmpty ? null : jsonDecode(body);
+    } catch (_) {
       return null;
     }
   }

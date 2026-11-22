@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
+import '../billing_suspension.dart';
 import '../config.dart';
 import '../identity.dart';
 import '../logging.dart';
@@ -18,6 +19,11 @@ class NexusRealtime {
   io.Socket? _socket;
   final Set<String> _rooms = {};
   final Map<String, NexusEventHandler> _handlers = {};
+
+  /// Reconnect scheduled for when a billing-suspension pause ends.
+  Timer? _resumeTimer;
+
+  String get _suspensionKey => NexusBillingSuspension.keyFor(_cfg.httpBase, _cfg.apiKey);
 
   bool get isConnected => _socket?.connected ?? false;
 
@@ -58,9 +64,37 @@ class NexusRealtime {
       }
     });
     socket.onDisconnect((_) => NexusLog.info('realtime disconnected'));
-    socket.onConnectError((e) => NexusLog.warn('realtime connect_error: $e'));
+    socket.onConnectError((e) {
+      if (!'$e'.contains('billing_suspended')) {
+        NexusLog.warn('realtime connect_error: $e');
+        return;
+      }
+      // Paying the invoice is the only fix: stop socket.io's reconnect loop and
+      // try once more when the pause ends (shared with every HTTP call).
+      socket.disconnect();
+      final data = e is Map ? e['data'] : null;
+      final seconds = NexusBillingSuspension.instance
+              .record(_suspensionKey, '/partner/rooms', 402, code: 'billing_suspended', details: data) ??
+          NexusBillingSuspension.defaultSeconds;
+      NexusLog.warn('realtime: API access is suspended for an overdue invoice — retrying in ${seconds}s');
+      _resumeAfter(socket, Duration(seconds: seconds));
+    });
+    socket.onConnect((_) => NexusBillingSuspension.instance.record(_suspensionKey, '/partner/rooms', 200));
     _socket = socket;
-    socket.connect();
+    final wait = NexusBillingSuspension.instance.remaining(_suspensionKey, '/partner/rooms');
+    if (wait > Duration.zero) {
+      _resumeAfter(socket, wait);
+    } else {
+      socket.connect();
+    }
+  }
+
+  void _resumeAfter(io.Socket socket, Duration wait) {
+    _resumeTimer?.cancel();
+    _resumeTimer = Timer(wait, () {
+      _resumeTimer = null;
+      if (identical(_socket, socket)) socket.connect();
+    });
   }
 
   /// Join a room (first/created on the server). Re-joined automatically on
@@ -135,6 +169,8 @@ class NexusRealtime {
   }
 
   void disconnect() {
+    _resumeTimer?.cancel();
+    _resumeTimer = null;
     _socket?.dispose();
     _socket = null;
   }

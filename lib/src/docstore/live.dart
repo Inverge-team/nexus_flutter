@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import 'client.dart';
+import '../billing_suspension.dart';
 
 /// Handlers for one live subscription. [onSnapshot] gets the subscribe ack and
 /// runs again after every reconnect — reset state from it.
@@ -94,6 +95,13 @@ class DocStoreLive {
     socket.onConnectError((err) {
       if ('$err'.contains('billing_suspended')) {
         socket.disconnect();
+        NexusBillingSuspension.instance.record(
+          NexusBillingSuspension.keyFor(_opts.baseUrl, _opts.apiKey),
+          '/partner/docstore',
+          402,
+          code: 'billing_suspended',
+          details: err is Map ? err['data'] : null,
+        );
         _setStatus(LiveStatus.stopped);
         for (final s in _subs.values) {
           s.handlers.onError?.call('billing_suspended', 'Nexus access is suspended for unpaid invoices');

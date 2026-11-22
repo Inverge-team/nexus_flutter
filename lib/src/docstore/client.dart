@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import '../billing_suspension.dart';
 
 /// Returns the signed-in end user's token from your identity provider
 /// (Firebase Auth, Auth0, Cognito, your server…), or null when signed out.
@@ -68,6 +69,15 @@ class DocStoreHttp {
     if (!_enabled()) throw DocStoreException('DocStore is switched off (NexusConfig.docStoreEnabled)', 'service_disabled', 0);
     final q = {for (final e in (query ?? const <String, String?>{}).entries) if (e.value != null) e.key: e.value!};
     final uri = Uri.parse('$base$path').replace(queryParameters: q.isEmpty ? null : q);
+    // Billing suspension: refuse locally, no request, until the pause ends.
+    final suspension = NexusBillingSuspension.keyFor(options.baseUrl, options.apiKey);
+    if (!NexusBillingSuspension.instance.begin(suspension, '/partner/docstore')) {
+      throw DocStoreException(
+        NexusBillingSuspension.message(NexusBillingSuspension.instance.remaining(suspension)),
+        'billing_suspended',
+        402,
+      );
+    }
     Future<http.Response> send(bool force) async {
       final headers = <String, String>{'content-type': 'application/json', 'x-api-key': options.apiKey};
       if (options.serviceKey != null) {
@@ -93,8 +103,11 @@ class DocStoreHttp {
     try {
       decoded = res.body.isEmpty ? null : jsonDecode(res.body);
     } catch (_) {}
+    final failure = decoded is Map ? decoded['error'] : null;
+    NexusBillingSuspension.instance.record(suspension, '/partner/docstore', res.statusCode,
+        code: failure is Map ? failure['code'] : null, details: failure is Map ? failure['details'] : null);
     if (res.statusCode >= 400) {
-      final err = decoded is Map ? decoded['error'] : null;
+      final err = failure;
       throw DocStoreException(
         err is Map ? '${err['message']}' : 'DocStore $method $path → ${res.statusCode}',
         err is Map ? '${err['code']}' : 'http_${res.statusCode}',
