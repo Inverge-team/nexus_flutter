@@ -52,6 +52,7 @@ import Foundation
     private func track(_ activity: Activity<Attrs>) {
       guard tracked.insert(activity.id).inserted else { return }
       let logicalId = activity.attributes.activityId ?? activity.id
+      endDuplicates(of: activity, logicalId: logicalId)
       emit(["kind": "status", "event": "activity", "activityId": logicalId, "state": String(describing: activity.activityState)])
       if let urls = activity.attributes.template?.imageURLs, !urls.isEmpty { NexusLiveActivityImageCache.cache(urls) }
       Task {
@@ -63,6 +64,28 @@ import Foundation
         for await state in activity.activityStateUpdates {
           self.emit(["kind": "status", "event": "activity-state", "activityId": logicalId, "state": String(describing: state)])
           if state == .ended || state == .dismissed { self.tracked.remove(activity.id) }
+        }
+      }
+    }
+
+    /// Every push-to-start creates a NEW activity, so a repeated start for the
+    /// same id (or a server retry after a lost answer) would leave two on the
+    /// Lock Screen — and the server can only keep the newest one current. Keep
+    /// the activity just seen, end older copies with the same logical id at once.
+    private func endDuplicates(of keep: Activity<Attrs>, logicalId: String) {
+      let copies = Activity<Attrs>.activities.filter {
+        $0.id != keep.id && ($0.attributes.activityId ?? $0.id) == logicalId
+          && $0.activityState != .ended && $0.activityState != .dismissed
+      }
+      guard !copies.isEmpty else { return }
+      emit(["kind": "status", "event": "duplicates-ended", "activityId": logicalId, "count": copies.count])
+      for copy in copies {
+        Task {
+          if #available(iOS 16.2, *) {
+            await copy.end(nil, dismissalPolicy: .immediate)
+          } else {
+            await copy.end(using: nil, dismissalPolicy: .immediate)
+          }
         }
       }
     }

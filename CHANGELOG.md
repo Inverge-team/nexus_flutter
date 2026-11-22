@@ -1,3 +1,14 @@
+## 1.14.1
+
+### Fixed — Live Activities
+- **iOS: a repeated start no longer leaves a second Live Activity on the Lock
+  Screen.** Every push-to-start creates a new activity, so a second `start` for
+  the same id (or a server retry after a lost answer) used to leave two — and
+  `end` only reached one, so the other stayed until iOS removed it hours later.
+  The SDK now keeps the newest activity for an id and ends older copies at once
+  (logged as `duplicates-ended`). The server now also turns a repeated start
+  into an update, and sends updates and ends to every copy it knows about.
+
 ## 1.14.0
 
 ### Fixed — billing suspension
