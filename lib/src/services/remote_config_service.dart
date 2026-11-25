@@ -10,7 +10,7 @@ import 'realtime_service.dart';
 /// Room the server pings when a new template is published (realtime updates).
 const String kRemoteConfigRoom = '__remote_config';
 
-/// Firebase-style Remote Config. Fetches the active template for this app
+/// Remote Config. Fetches the active template for this app
 /// instance, resolves conditional values server-side, and exposes typed getters
 /// with in-app defaults as the fallback.
 ///
@@ -48,14 +48,14 @@ class NexusRemoteConfig {
   DateTime? get lastFetchTime => _lastFetch;
 
   /// Set in-app fallback values (used until the server provides a value).
-  /// Merges with any existing defaults. Mirrors Firebase `setDefaults`.
+  /// Merges with any existing defaults.
   void setDefaults(Map<String, Object?> defaults) =>
       _defaults = {..._defaults, ...defaults};
 
   /// Custom targeting attributes sent with every fetch (e.g. `governorate`,
   /// `plan`, `segment`). These feed "Custom attribute" conditions on the server.
-  /// Merges with existing attributes; call [clearAttributes] to reset. Mirrors
-  /// Firebase custom signals. Values must be string/number/bool.
+  /// Merges with existing attributes; call [clearAttributes] to reset.
+  /// Values must be string/number/bool.
   void setAttributes(Map<String, Object?> attributes) =>
       _attributes.addAll(attributes);
 

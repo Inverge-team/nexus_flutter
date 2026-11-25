@@ -12,7 +12,7 @@ import '../inapp/inapp_models.dart';
 import '../logging.dart';
 import 'realtime_service.dart';
 
-/// In-app messages (OneSignal-style). Fetches the messages meant for this user —
+/// In-app messages. Fetches the messages meant for this user —
 /// the server applies the audience, assigns the A/B variant and fills in
 /// `{{variables}}` — then evaluates triggers (session start / custom event) and
 /// frequency caps locally, requests display, and reports impressions/clicks.

@@ -4,6 +4,9 @@ import 'dart:convert';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import 'client.dart';
+import '../app_identity.dart';
+import '../billing_suspension.dart';
+import '../shield/shield_signing.dart';
 
 /// Handlers for one live subscription. [onSnapshot] gets the subscribe ack and
 /// runs again after every reconnect — reset state from it.
@@ -92,8 +95,31 @@ class DocStoreLive {
       if (status != LiveStatus.stopped) _setStatus(LiveStatus.connecting);
     });
     socket.onConnectError((err) {
+      if ('$err'.contains('api_key_restricted')) {
+        socket.disconnect();
+        final data = err is Map ? err['data'] : null;
+        final reason = data is Map ? data['reason'] : null;
+        final now = DateTime.now();
+        final recent = _restrictedRetryAt != null && now.isBefore(_restrictedRetryAt!);
+        _restrictedRetryAt = now.add(const Duration(seconds: 30));
+        _setStatus(LiveStatus.offline);
+        if (reason == 'shield_token_required' || reason == 'shield_token_invalid') {
+          _refreshShield = reason == 'shield_token_invalid';
+          NexusShieldSigning.activate().then((ok) {
+            if (ok) Timer(recent ? const Duration(seconds: 30) : Duration.zero, () => identical(_socket, socket) ? socket.connect() : null);
+          });
+        }
+        return;
+      }
       if ('$err'.contains('billing_suspended')) {
         socket.disconnect();
+        NexusBillingSuspension.instance.record(
+          NexusBillingSuspension.keyFor(_opts.baseUrl, _opts.apiKey),
+          '/partner/docstore',
+          402,
+          code: 'billing_suspended',
+          details: err is Map ? err['data'] : null,
+        );
         _setStatus(LiveStatus.stopped);
         for (final s in _subs.values) {
           s.handlers.onError?.call('billing_suspended', 'Nexus access is suspended for unpaid invoices');
@@ -142,8 +168,16 @@ class DocStoreLive {
   Future<Map<String, Object?>> _authPayload(bool force) async {
     if (_opts.serviceKey != null) return {'key': _opts.apiKey, 'serviceKey': _opts.serviceKey};
     final t = _opts.getToken == null ? null : await _opts.getToken!(forceRefresh: force);
-    return {'key': _opts.apiKey, 'token': ?t};
+    // Keys restricted to attested apps: a fresh single-use Shield proof per (re)connect.
+    final shield = NexusShieldSigning.active
+        ? await NexusShieldSigning.socketAuth((_opts.realtimeUrl ?? _opts.baseUrl).replaceAll(RegExp(r'/+$'), ''), forceRefresh: _refreshShield)
+        : const <String, String>{};
+    _refreshShield = false;
+    return {'key': _opts.apiKey, 'token': ?t, ...NexusAppIdentity.socketAuth(), ...shield};
   }
+
+  bool _refreshShield = false;
+  DateTime? _restrictedRetryAt;
 
   Future<void> _send(io.Socket socket, String subId) async {
     final sub = _subs[subId];

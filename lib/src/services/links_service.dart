@@ -63,7 +63,7 @@ class NexusDeepLink {
   String toString() => 'NexusDeepLink(${source.name}, path=$path, slug=$slug, match=$matchType)';
 }
 
-/// Deep linking & attribution (OneLink-style), automatic with `linksEnabled`:
+/// Deep linking & attribution, automatic with `linksEnabled`:
 ///
 /// - **Install** — reported once per install on first launch, matched to the
 ///   link click exactly via the Google Play install referrer on Android, or by

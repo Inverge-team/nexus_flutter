@@ -1,3 +1,45 @@
+## 1.15.0
+
+### Added — API-key application restrictions
+- **Keys restricted to apps work out of the box.** Every Nexus request and
+  socket handshake now carries the app's identity — Android: `X-Android-Package`
+  + `X-Android-Cert` (the signing certificate's SHA-256, read natively);
+  iOS: `X-Ios-Bundle-Identifier` — so a key restricted to your Android and iOS
+  apps (console → API keys → Application restrictions, *Basic*) accepts it with
+  no code change. Background isolates (incoming calls, Push Authentication)
+  send it too.
+- **Shield-attested restrictions.** With `shieldEnabled: true`, when Nexus
+  answers `403 api_key_restricted` because a request has no (valid) Shield
+  token, the SDK turns Shield signing on, retries once, and keeps signing on
+  later launches — HTTP, realtime and DocStore sockets (a fresh proof per
+  connect), DocStore HTTP, Push Authentication (Shield's proof in
+  `X-Nexus-Shield-Proof`) and the headless voice isolate. `shieldProtectNexus`
+  is no longer needed for this.
+- Any other restriction refusal is logged once with what to check in the
+  console.
+
+## 1.14.1
+
+### Fixed — Live Activities
+- **iOS: a repeated start no longer leaves a second Live Activity on the Lock
+  Screen.** Every push-to-start creates a new activity, so a second `start` for
+  the same id (or a server retry after a lost answer) used to leave two — and
+  `end` only reached one, so the other stayed until iOS removed it hours later.
+  The SDK now keeps the newest activity for an id and ends older copies at once
+  (logged as `duplicates-ended`). The server now also turns a repeated start
+  into an update, and sends updates and ends to every copy it knows about.
+
+## 1.14.0
+
+### Fixed — billing suspension
+- **One `402 billing_suspended` now stops every call.** The SDK sends nothing for
+  the pause the API asks for (`details.retryAfterSeconds`, default 5 minutes):
+  telemetry is dropped (not queued for later), requests return `null`, DocStore
+  and Push Auth throw `billing_suspended` without a request, and the realtime
+  socket stops reconnecting until the pause ends. Then one probe goes out; a
+  refusal starts a new pause, success resumes. The pause is saved on the device,
+  so restarting the app doesn't skip it. Messaging is never paused.
+
 ## 1.13.1
 
 ### Fixed — Push

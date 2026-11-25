@@ -6,6 +6,9 @@ import 'package:http/http.dart' as http;
 import 'package:livekit_client/livekit_client.dart' as lk;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../shield/shield_signing.dart';
+import '../app_identity.dart';
+
 /// HEADLESS call-media entrypoint. Runs in a Flutter engine that our native
 /// [NexusCallForegroundService] hosts AFTER the user answers in the system call
 /// UI — the app's own UI is never launched. It creates the callee leg, connects
@@ -77,15 +80,22 @@ class _HeadlessCall {
       final headers = {
         'content-type': 'application/json',
         'x-api-key': key,
+        ...await NexusAppIdentity.load(),
         if (p.getString(_kOs) != null) 'x-client-os': p.getString(_kOs)!,
         if (p.getString(_kOsV) != null) 'x-client-os-version': p.getString(_kOsV)!,
       };
 
+      // Keys restricted to attested apps: each request carries a fresh Shield
+      // proof, from the token + hardware key the app persisted (`{}` otherwise).
+      Future<Map<String, String>> signed(Uri url) async =>
+          {...headers, ...await NexusShieldSigning.headers('POST', url)};
+
       // 1) Create OUR (callee) media leg and get a LiveKit join token.
+      final legsUrl = Uri.parse('$base/partner/voice/legs');
       final legRes = await http
           .post(
-            Uri.parse('$base/partner/voice/legs'),
-            headers: headers,
+            legsUrl,
+            headers: await signed(legsUrl),
             body: jsonEncode({
               'sessionId': callId,
               'role': 'callee',
@@ -124,9 +134,10 @@ class _HeadlessCall {
       _log('livekit connected, mic on');
 
       // 3) Mark the leg answered so the backend/caller see us connected.
+      final answerUrl = Uri.parse('$base/partner/voice/legs/answer');
       await http.post(
-        Uri.parse('$base/partner/voice/legs/answer'),
-        headers: headers,
+        answerUrl,
+        headers: await signed(answerUrl),
         body: jsonEncode({'legId': legId}),
       );
       _log('answered leg=$legId');

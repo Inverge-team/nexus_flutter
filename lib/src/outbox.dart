@@ -112,6 +112,8 @@ class NexusOutbox {
   /// for bulky, best-effort telemetry (e.g. session-replay) so it is never
   /// persisted and can't grow the durable store into a memory hazard.
   void enqueue(String path, Map<String, Object?> body, {bool ephemeral = false}) {
+    // Billing suspended: drop, don't pile up a backlog to replay later.
+    if (_http.suspended) return;
     _addItem(
       _OutboxItem(
         id: _genId(),
@@ -151,6 +153,7 @@ class NexusOutbox {
   /// Attempt to deliver queued items in order. Idempotent + reentrancy-guarded.
   Future<void> drain() async {
     if (_draining || _items.isEmpty) return;
+    if (_http.suspended) return; // paused — items wait; nothing is sent
     _draining = true;
     try {
       var failed = false;

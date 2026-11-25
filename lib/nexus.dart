@@ -45,7 +45,7 @@ export 'src/surveys/survey_view.dart'
 export 'src/surveys/survey_overlay.dart'
     show NexusSurveyOverlay, NexusSurveyBuilder;
 
-// In-app messages (OneSignal-style).
+// In-app messages.
 export 'src/services/inapp_service.dart' show NexusInApp;
 // Live Activities (iOS ActivityKit + Android live notifications).
 export 'src/services/live_activity_service.dart' show NexusLiveActivity;
